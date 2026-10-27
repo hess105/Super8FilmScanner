@@ -2085,6 +2085,52 @@ Expected: all three files listed, no "No such file". Then for each protocol comm
 git add docs/design docs/ROADMAP.md README.md && git commit -m "docs: architecture, hardware design, roadmap and next steps"
 ```
 
+### Task 16: Wiring schematics
+
+**Files:**
+- Create: `docs/design/wiring.md`
+- Modify: `docs/design/hardware.md` (section 3: link to the new file), `docs/ROADMAP.md` (phase 1: reference it), `README.md` (add the link next to the other design notes)
+
+**Interfaces:**
+- Consumes: `firmware/pins.py` (the GPIO map, the single source of truth), `firmware/main.py` (EN is active low; film motor is held after a move, reel motor is released), the settings `reel_steps_per_rev` and `steps_per_frame` in `app/config.py` (3200 steps per revolution means 1/16 microstepping), `docs/design/hardware.md`.
+- Produces: text-based, version-controlled schematics for the perfboard build, readable on GitHub. A later PCB plan redraws the same connections in KiCad.
+
+Documentation task, no pytest test. Use Mermaid diagrams (GitHub renders them) plus tables. Take pin names from the manufacturers' datasheets (Raspberry Pi Pico, Trinamic TMC2209) rather than from memory, and put "VERIFY against your module's datasheet before powering" next to every item that differs between module vendors (TMC2209 breakout pin order, the PDN_UART pin, microstepping pins MS1/MS2, motor coil pairs). Do not invent part numbers; describe modules by type.
+
+- [ ] **Step 1: Read the sources**
+
+Read `firmware/pins.py`, `firmware/main.py`, `app/config.py` and `docs/design/hardware.md`. Note every GPIO and which signal it carries.
+
+- [ ] **Step 2: Write `docs/design/wiring.md`**
+
+Sections, in this order:
+1. **Overview.** A Mermaid `flowchart LR` of the whole machine: 12 V supply, fuse, buck converter to 5 V, Raspberry Pi, HQ camera (CSI ribbon), Pico (USB to the Pi), two TMC2209 modules, film motor, reel motor, LED driver, LED.
+2. **Power.** A Mermaid diagram and a table: 12 V rail (supply, fuse, to both TMC2209 VM pins, to the LED driver input, to the buck converter), 5 V rail (buck converter rated for at least the Pi's needs, to the Pi), Pico powered from the Pi over USB, 3V3 from the Pico to the TMC2209 VIO pins, one shared ground. State where a 100 uF electrolytic capacitor goes across VM and GND at each driver.
+3. **Pico pin table.** One row per used GPIO, from `firmware/pins.py`: signal, GPIO number, Pico physical pin number (read it from the Pico pinout), goes to (which module pin), direction, notes. Include the unused `SENSOR_IN` as reserved.
+4. **TMC2209 module wiring (one diagram, used twice).** Mermaid diagram plus a table of module pins: VM, GND, VIO, EN, STEP, DIR, MS1, MS2, PDN_UART, the four motor coil pins, and what each connects to for the film driver and for the reel driver. Explain that EN is active low (firmware holds EN high when idle), that 3200 steps per revolution assumes 1/16 microstepping and how MS1/MS2 select it on this chip, and that standalone STEP/DIR mode needs the PDN_UART pin handled per the datasheet.
+5. **Stepper motors.** How to find the two coil pairs of a NEMA 17 with a multimeter, how to connect them, and what swapping one pair does (reverses direction). Current setting: set the driver reference voltage to the motor's rated current before connecting the motor, using the module's formula from its datasheet.
+6. **LED lighting.** Mermaid diagram and table: constant-current LED driver with a PWM dimming input, driven from the Pico PWM pin (20 kHz in firmware), 12 V in, LED out. Note to match the driver's current to the LED's rating, never drive the LED directly from a GPIO, and give the dimming-input voltage warning to check (3.3 V logic).
+7. **Pi connections.** USB from the Pi to the Pico (power and serial, `/dev/ttyACM0`), CSI ribbon for the HQ camera, the 5 V feed, and that the Pi and Pico share ground through USB.
+8. **Connectors and wire.** Recommendations only: keyed connectors for motors and power, wire gauge for 12 V runs and motor leads, strain relief, a fuse on the 12 V input, keeping motor wiring away from the camera ribbon.
+9. **Safety and power-up order.** No hot-plugging motors (it can destroy the driver), set Vref first, power up with motors disconnected, check the 12 V and 5 V rails with a multimeter, then connect one motor at a time.
+10. **Bring-up checks per wire group.** A numbered checklist matching Task 4 step 4 and the README: serial reply to `STATUS`, LED dims with `LIGHT 30`, film motor moves with `ADVANCE 164`, reel motor moves with `WIND 100`, direction check, and what a failure usually means (no motion: EN or VM; wrong direction: swap a coil pair; stutter: current too low or wiring).
+11. **Revision history.** A short table with this first version and the date.
+
+- [ ] **Step 3: Link it**
+
+In `docs/design/hardware.md` section 3 (wiring overview), add one line: `Full schematics, pin table and bring-up checks: [wiring](wiring.md).` In `docs/ROADMAP.md` phase 1 "Bench bring-up", add the same link under its goal. In `README.md`, extend the design notes line with `[wiring](docs/design/wiring.md)`.
+
+- [ ] **Step 4: Check pins and links**
+
+Run: `grep -n "FILM_STEP\|FILM_DIR\|FILM_EN\|REEL_STEP\|REEL_DIR\|REEL_EN\|SENSOR_IN\|LED_PWM" firmware/pins.py`
+Expected: every GPIO number in the wiring pin table matches this output exactly. Then run `ls docs/design/wiring.md` and confirm each relative link added in Step 3 resolves to an existing file. Check each Mermaid block opens with a valid diagram type and has balanced brackets.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/design/wiring.md docs/design/hardware.md docs/ROADMAP.md README.md && git commit -m "docs: wiring schematics, pin table and bring-up checks"
+```
+
 ---
 
 ## Self-Review
