@@ -4,7 +4,7 @@ Hardware here is the design intent. The code in `firmware/` is the source of tru
 
 ## 1. Bill of materials
 
-Prices are rough USD estimates; check live prices.
+Prices are rough USD estimates; check live prices. Datasheets: [index](../datasheets/README.md).
 
 | Item | Estimate |
 |---|---|
