@@ -4,21 +4,25 @@ Hardware here is the design intent. The code in `firmware/` is the source of tru
 
 ## 1. Bill of materials
 
-Prices are rough USD estimates; check live prices. Datasheets: [index](../datasheets/README.md).
+The v3 selection is in [bom.md](bom.md), with links, ordering codes and the checks to make before ordering. All prices are rough USD **estimates**; DigiKey part numbers and prices come from search listings (DigiKey blocks automated fetches), so check live stock and price. Datasheets: [index](../datasheets/README.md).
 
-| Item | Estimate |
-|---|---|
-| Raspberry Pi 4 (2 GB) | 45 |
-| Pi HQ Camera (used or clone about 55; about 75-80 new from third parties) | 55 |
-| Pimoroni microscope lens 0.12-1.8x | 30 |
-| 2x NEMA 17 pancake steppers | 20 |
-| Controller (Pico + 2x TMC2209 modules, later a PCB) | 20 |
-| LED (single COB), driver, diffuser | 15 |
-| 12 V 2 A PSU, buck converter, cables, microSD | 25 |
-| Printed case and parts, filament, rubber wheel, hardware | 20 |
-| **Total** | **about 230** |
+| Item | Selection | Estimate |
+|---|---|---|
+| Computer | Raspberry Pi 4 Model B, 2 GB | 45-60 |
+| Camera | Pi HQ Camera (not on DigiKey; PiShop or other resellers) | 55 |
+| Lens | Pimoroni microscope lens 0.12-1.8x | 30 |
+| Motors | 2x NEMA 17 pancake steppers (owner's pick, Amazon) | 20 |
+| Controller | Pico (SC0915) 5, 2x official TMC2209-SILENTSTEPSTICK 38 | 43 |
+| LED | Cree CXA1304 COB (9 V class), RECOM RCD-24-0.70 driver, TE LUMAWISE holder, Fischer SK 577 50 SA heat sink, opal diffuser | 40-60 |
+| 12 V and 5 V | Bel/CUI SDI65-12-UC-P5 12 V 5 A adapter 43, Murata OKX-T/5-D12P-C 5 V module 8 | 51 |
+| Protection and parts | Littelfuse 03455LS1H fuse holder and fuse, Rubycon capacitors, JST XH connectors, barrel jack, wire, perfboard, microSD | 25 |
+| Printed case and parts, filament, rubber wheel, hardware | Retail | 20 |
+| Not itemised | Shipping, tax, spares and price drift: a balancing item, because the BOM states about $390 but its itemised lines (high ends) sum to about $364 | about 26 |
+| **Total** | | **about 390 without the SSD** |
 
-If the camera is bought new the total is about $250-255. A Pi 5 instead of the Pi 4 adds about $35. Upgrading to an enlarger lens later adds about $35-135.
+An SSD for frames (1 TB) adds about $70-90. A **budget swap** (third-party TMC2209 modules, a generic 12 V 5 A adapter, a Pololu D24V50F5 5 V regulator) brings the total to about **$330 without the SSD**. The totals follow the BOM's cost section; the rows above use the high end of each range. A Pi 5 instead of the Pi 4 adds about $35. Upgrading to an enlarger lens later adds about $35-135.
+
+**Lead-time risks** (as shown on DigiKey pages, not confirmed): Murata 5 V module 38 weeks, official TMC2209 module 16-19 weeks, RECOM driver 10-17 weeks, 12 V adapters 12-28 weeks depending on model. The LED section also has a design issue to resolve before relying on the parts: the RCD-24's PWM input is active low and rated to 1 kHz, while the firmware drives 20 kHz ([wiring](wiring.md) section 6, [roadmap](../ROADMAP.md)).
 
 ## 2. Pin map (`firmware/pins.py`, Pico GPIO numbers)
 
@@ -33,7 +37,7 @@ EN is active low on the TMC2209. The firmware drives EN high at start (motors of
 
 ## 3. Wiring overview
 
-The Pi talks to the Pico over one USB cable (it appears as `/dev/ttyACM0`). The Pico drives two TMC2209 driver modules and one LED driver channel. A 12 V supply feeds the motor drivers and the LED driver, and a buck converter makes 5 V for the Pi.
+The Pi talks to the Pico over one USB cable (it appears as `/dev/ttyACM0`). The Pico drives two TMC2209 driver modules and one LED driver channel. A 12 V supply feeds the motor drivers and the LED driver, and a Murata 5 V module makes 5 V for the Pi.
 
 Full schematics, pin table and bring-up checks: [wiring](wiring.md).
 
@@ -42,10 +46,10 @@ Full schematics, pin table and bring-up checks: [wiring](wiring.md).
 | Pi USB | Pico USB | Serial commands and Pico power |
 | Pico GPIO 2, 3, 4 | TMC2209 (film) STEP, DIR, EN | Film motor holds position after a move |
 | Pico GPIO 5, 6, 7 | TMC2209 (reel) STEP, DIR, EN | Reel motor released after each move |
-| Pico GPIO 15 | LED driver PWM input | Constant-current driver with PWM dimming |
+| Pico GPIO 15 | RCD-24-0.70 PWM/ON/OFF input (pin 3) | Active low, rated to 1 kHz; see wiring section 6 |
 | Pico GPIO 14 | Sensor (optional) | Reserved |
 | 12 V supply | TMC2209 VM, LED driver | Add a bulk capacitor at the drivers |
-| 12 V supply | Buck converter -> 5 V | Powers the Pi |
+| 12 V supply | Murata OKX-T/5-D12P-C -> 5 V | Powers the Pi |
 | Pi CSI | HQ camera | Ribbon cable |
 | Motor coils | TMC2209 outputs | Per the module's pinout; check coil pairs before powering |
 
@@ -59,11 +63,11 @@ Full schematics, pin table and bring-up checks: [wiring](wiring.md).
 - Existing FreeCAD parts are updated or replaced; check how they map onto the new layout first.
 
 **Controller PCB**
-- RP2040, 2x TMC2209, one LED driver channel, one sensor input, 12 V in with a buck converter to 5 V.
+- RP2040, 2x TMC2209, one LED driver channel, one sensor input, 12 V in with a 5 V module for the Pi.
 - Two-layer. Prototype on perfboard first, using the pin map above.
 
 **Lighting**
-- 95+ CRI white LED, constant-current driver with PWM dimming, opal diffuser behind the gate. Light and exposure stay fixed during a scan.
+- CXA1304 COB LED (5000 K, CRI 90 minimum), RECOM RCD-24-0.70 constant-current driver, opal diffuser behind the gate. Light and exposure stay fixed during a scan.
 
 ## 5. Calibration procedure
 

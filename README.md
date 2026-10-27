@@ -42,7 +42,7 @@ Without the tool, this ffmpeg command does the same for the CPU path, from insid
 
     ffmpeg -framerate 18 -start_number 0 -i frames/frame_%08d.png -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -c:v libx264 -preset slower -crf 15 -pix_fmt yuv420p reel.mp4
 
-Design notes: [architecture](docs/design/architecture.md), [hardware](docs/design/hardware.md), [wiring](docs/design/wiring.md), [datasheets](docs/datasheets/README.md). Project plan and next steps: [roadmap](docs/ROADMAP.md).
+Design notes: [architecture](docs/design/architecture.md), [hardware](docs/design/hardware.md), [wiring](docs/design/wiring.md), [bill of materials](docs/design/bom.md), [datasheets](docs/datasheets/README.md). Project plan and next steps: [roadmap](docs/ROADMAP.md).
 
 The code is unlikely to run straight out of the box on your computer/system, it will need minor amendments to folder names/paths etc.
 
