@@ -110,7 +110,7 @@ class ScanRunner:
 
     def _rate_fps(self):
         times = list(self._frame_times)
-        if not self._busy() or len(times) < 2:
+        if not self._busy() or self._scanner.state != "running" or len(times) < 2:
             return 0
         return round((len(times) - 1) / max(time.monotonic() - times[0], 1e-3), 2)
 

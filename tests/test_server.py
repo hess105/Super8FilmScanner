@@ -150,3 +150,10 @@ def test_console_route_409_while_scanning(tmp_path):
         client.post("/api/scan/stop")
         gate.set()
 
+
+
+def test_page_has_script_element_ids(tmp_path):
+    client, _ = make_client(tmp_path)
+    page = client.get("/").text
+    for element_id in ("terminal", "term-input", "state-pill", "preview", "btn-start"):
+        assert 'id="%s"' % element_id in page
