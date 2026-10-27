@@ -6,6 +6,20 @@ The code and scanner were created quickly to achieve the job of scanning a handf
 
 The code is not optimised or user friendly, but pull requests are very welcome!
 
+## New web app (work in progress)
+
+The scripts in `legacy/` are the original Marlin-based workflow, kept for reference. The new version is `app/` (Pi web UI) plus `firmware/` (RP2040 controller).
+
+On Raspberry Pi OS (Bookworm):
+
+    sudo apt install -y python3-picamera2 python3-opencv python3-numpy ffmpeg
+    python3 -m venv --system-site-packages .venv && .venv/bin/pip install -r requirements.txt
+    .venv/bin/python -m app --config scanner.json
+
+Open `http://<pi-hostname>.local:8000`. There is no login, so only run it on a network you trust.
+Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `reel.mp4` and `scan.json`.
+Hardware numbers (steps per frame, motor rates, sprocket threshold) live in `scanner.json`; see `app/config.py` for every setting and its default.
+
 The code is unlikely to run straight out of the box on your computer/system, it will need minor amendments to folder names/paths etc.
 
 
@@ -27,7 +41,7 @@ See the video on how to use and build this device.
 
 https://youtu.be/rd1Xu6e6nrw
 
-# Setup
+# Setup (legacy)
 
 This is a rough setup description and some steps might be missing, but here is what's necessary:
 
@@ -68,7 +82,7 @@ To install OpenCV, run `sudo apt-get update` , then `sudo apt-get install build-
 
 you might also need to run `pip install opencv-python==4.5.3.56` .
 
-# Scanning Process
+# Scanning Process (legacy)
 
 ## Step 1 - Capture full frame masters
 
