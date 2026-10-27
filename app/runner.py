@@ -83,6 +83,12 @@ class ScanRunner:
         if self._busy():
             self._scanner.stop()
 
+    def shutdown(self, timeout=60):
+        """Stop any scan and wait for it to finish writing frames and scan.json."""
+        self.stop()
+        if self._thread is not None:
+            self._thread.join(timeout)
+
     def status(self):
         sc = self._scanner
         if sc is None:

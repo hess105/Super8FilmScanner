@@ -97,8 +97,10 @@ class Scanner:
         return frame, centre
 
     def _write(self, path, image):
-        if not cv2.imwrite(str(path), image, [cv2.IMWRITE_PNG_COMPRESSION, self.settings.png_compression]):
+        tmp = path.with_name(path.stem + ".tmp.png")  # not matched by next_frame_number
+        if not cv2.imwrite(str(tmp), image, [cv2.IMWRITE_PNG_COMPRESSION, self.settings.png_compression]):
             raise IOError("failed to write %s" % path)
+        os.replace(tmp, path)  # a hard kill never leaves a truncated frame
 
     def run(self, max_frames=None):
         s = self.settings

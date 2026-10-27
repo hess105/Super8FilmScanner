@@ -4,7 +4,7 @@ import uvicorn
 
 from .camera import Picamera2Camera
 from .config import Settings
-from .controller import Controller
+from .controller import Controller, ControllerError
 from .runner import ScanRunner
 from .server import create_app
 
@@ -21,7 +21,16 @@ def main():
     camera = Picamera2Camera(settings)
     camera.lock_white_balance()  # with the scanner light on and empty gate
     runner = ScanRunner(controller, camera, settings)
-    uvicorn.run(create_app(runner), host="0.0.0.0", port=args.port)  # LAN only, no auth in v1
+    try:
+        uvicorn.run(create_app(runner), host="0.0.0.0", port=args.port)  # LAN only, no auth in v1
+    finally:  # the scan thread is a daemon: finish its writes and scan.json before exiting
+        runner.shutdown()
+        try:
+            controller.set_light(0)
+        except ControllerError:
+            pass
+        controller.close()
+        camera.close()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 
@@ -219,3 +220,14 @@ def test_preview_after_test_frame_returns_cached_test_preview(tmp_path):
     runner.test_frame()
     cached = runner._test_preview
     assert cached is not None and runner.preview_jpeg() is cached
+
+
+def test_shutdown_stops_scan_and_saves_state(tmp_path):
+    _, runner, _ = make_runner(tmp_path)
+    runner.shutdown()  # no scan: no error
+    runner.start("reel1")
+    wait_for(runner, {"running"})
+    runner.shutdown()
+    assert not runner._thread.is_alive()
+    meta = json.loads((tmp_path / "reel1" / "scan.json").read_text())
+    assert meta["state"] == "done"

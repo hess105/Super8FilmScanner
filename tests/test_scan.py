@@ -181,3 +181,13 @@ def test_meta_saved_during_scan_and_corrupt_meta_tolerated(tmp_path):
     (tmp_path / "reel" / "scan.json").write_text('{"target": [1, ')
     sc = scanner(film, tmp_path)
     assert sc.target is None and sc.flagged == [] and sc.frame_number == 3
+
+
+def test_no_tmp_png_left_and_stray_tmp_is_not_counted(tmp_path):
+    film = FakeFilm()
+    sc = scanner(film, tmp_path)
+    sc.run(max_frames=3)
+    frames = tmp_path / "reel" / "frames"
+    assert list(frames.glob("*.tmp.png")) == []
+    (frames / "frame_00000007.tmp.png").write_bytes(b"x")
+    assert next_frame_number(frames) == 3
