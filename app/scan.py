@@ -1,0 +1,169 @@
+import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
+from pathlib import Path
+
+import cv2
+
+from .align import detect_sprocket, shift_frame
+from .postprocess import postprocess
+from .takeup import wind_steps
+
+PENDING_WRITES = 4  # frames waiting to be written; bounds memory on the Pi
+PREVIEW_WIDTH = 640
+
+
+class ScanError(Exception):
+    pass
+
+
+def next_frame_number(frames_dir):
+    numbers = [int(p.stem.split("_")[1]) for p in Path(frames_dir).glob("frame_????????.png")]
+    return max(numbers) + 1 if numbers else 0
+
+
+class Scanner:
+    def __init__(self, controller, camera, settings, reel_dir, on_progress=None):
+        self.controller = controller
+        self.camera = camera
+        self.settings = settings
+        self.on_progress = on_progress
+        self.reel_dir = Path(reel_dir)
+        self.frames_dir = self.reel_dir / "frames"
+        self.frames_dir.mkdir(parents=True, exist_ok=True)
+        self.meta_path = self.reel_dir / "scan.json"
+        self.state = "idle"
+        self.error = None
+        self.preview = None
+        self.frame_number = next_frame_number(self.frames_dir)
+        self.flagged = []
+        self.target = None  # where the hole centre is placed in every saved frame
+        self._offset = (0.0, 0.0)
+        self._stop = threading.Event()
+        self._running = threading.Event()
+        self._running.set()
+        self._load_meta()
+
+    # control -----------------------------------------------------------
+    def pause(self):
+        self._running.clear()
+        self.state = "paused"
+
+    def resume(self):
+        self.state = "running"
+        self._running.set()
+
+    def stop(self):
+        self._stop.set()
+        self._running.set()
+
+    # persistence -------------------------------------------------------
+    def _load_meta(self):
+        if self.meta_path.exists():
+            meta = json.loads(self.meta_path.read_text())
+            self.flagged = meta.get("flagged", [])
+            if meta.get("target"):
+                self.target = tuple(meta["target"])
+
+    def _save_meta(self):
+        self.meta_path.write_text(json.dumps({
+            "settings": asdict(self.settings),
+            "target": list(self.target) if self.target else None,
+            "frames": self.frame_number,
+            "flagged": self.flagged,
+            "state": self.state,
+        }, indent=2))
+
+    # scan loop ---------------------------------------------------------
+    def _grab(self):
+        frame = self.camera.capture()
+        return cv2.flip(frame, 0) if self.settings.flip_vertical else frame
+
+    def _detect(self, frame):
+        centre = detect_sprocket(frame, self.settings)
+        for _ in range(self.settings.retries):
+            if centre is not None:
+                break
+            frame = self._grab()
+            centre = detect_sprocket(frame, self.settings)
+        return frame, centre
+
+    def _write(self, path, image):
+        if not cv2.imwrite(str(path), image, [cv2.IMWRITE_PNG_COMPRESSION, self.settings.png_compression]):
+            raise IOError("failed to write %s" % path)
+
+    def run(self, max_frames=None):
+        s = self.settings
+        self.state = "running"
+        self.error = None
+        start = on_spool = self.frame_number
+        to_wind = nudges = failures = 0
+        pool = ThreadPoolExecutor(max_workers=3)
+        slots = threading.BoundedSemaphore(PENDING_WRITES)
+        futures = []
+        try:
+            self.controller.set_light(s.light_percent)
+            while not self._stop.is_set():
+                if max_frames is not None and self.frame_number - start >= max_frames:
+                    break
+                if not self._running.wait(0.1):
+                    continue
+                for f in [f for f in futures if f.done()]:
+                    f.result()  # surface write errors early
+                    futures.remove(f)
+
+                frame, centre = self._detect(self._grab())
+                h, w = frame.shape[:2]
+                if centre is not None:
+                    if self.target is None:
+                        self.target = (centre[0], h / 2)
+                    dy = self.target[1] - centre[1]
+                    if abs(dy) > s.nudge_tolerance_frac * h:
+                        nudges += 1
+                        if nudges > s.max_nudges:
+                            raise ScanError("too many nudges without finding the frame")
+                        steps = s.nudge_forward_steps if centre[1] > self.target[1] else s.nudge_reverse_steps
+                        self.controller.advance(steps, s.nudge_rate)
+                        continue
+                    self._offset = (self.target[0] - centre[0], dy)
+                    failures = 0
+                else:
+                    failures += 1
+                    if failures >= s.max_consecutive_failures:
+                        raise ScanError("sprocket hole lost")
+                    self.flagged.append(self.frame_number)  # keep the previous offset for this frame
+
+                aligned = postprocess(shift_frame(frame, *self._offset), s)
+                self.preview = cv2.resize(aligned, (PREVIEW_WIDTH, int(PREVIEW_WIDTH * h / w)))
+                path = self.frames_dir / ("frame_%08d.png" % self.frame_number)
+                slots.acquire()
+                fut = pool.submit(self._write, path, aligned)
+                fut.add_done_callback(lambda _f: slots.release())
+                futures.append(fut)
+
+                self.frame_number += 1
+                to_wind += 1
+                nudges = 0
+                if to_wind >= s.frames_per_wind + 3:  # leave a little slack on the spool
+                    self.controller.wind(wind_steps(on_spool, s.frames_per_wind, s), s.wind_rate)
+                    on_spool += s.frames_per_wind
+                    to_wind -= s.frames_per_wind
+                self.controller.advance(s.steps_per_frame, s.advance_rate)
+                if self.on_progress:
+                    self.on_progress(self)
+            self.state = "done"
+        except Exception as e:
+            self.error = "%s: %s" % (type(e).__name__, e)
+            self.state = "error"
+        finally:
+            pool.shutdown(wait=True)
+            for f in futures:
+                if f.exception() and self.state != "error":
+                    self.error = "%s: %s" % (type(f.exception()).__name__, f.exception())
+                    self.state = "error"
+            try:
+                self.controller.set_light(0)
+            except Exception:
+                pass  # the controller may be what failed
+            self._save_meta()
