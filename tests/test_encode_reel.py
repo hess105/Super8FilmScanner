@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 import pytest
 
 import encode_reel as er
@@ -40,13 +41,24 @@ def probe_with(text, code=0):
     return run
 
 
-@pytest.mark.parametrize("encoder", list(er.ENCODERS))
-@pytest.mark.parametrize("codec,suffix", [("h264", "264"), ("hevc", "265")])
-def test_each_encoder_names_the_right_codec(encoder, codec, suffix):
+NAMES = {
+    ("cpu", "h264"): "libx264", ("cpu", "hevc"): "libx265",
+    ("nvenc", "h264"): "h264_nvenc", ("nvenc", "hevc"): "hevc_nvenc",
+    ("videotoolbox", "h264"): "h264_videotoolbox", ("videotoolbox", "hevc"): "hevc_videotoolbox",
+    ("qsv", "h264"): "h264_qsv", ("qsv", "hevc"): "hevc_qsv",
+    ("amf", "h264"): "h264_amf", ("amf", "hevc"): "hevc_amf",
+    ("vaapi", "h264"): "h264_vaapi", ("vaapi", "hevc"): "hevc_vaapi",
+}
+
+
+def test_encoder_table_is_exactly_the_documented_names():
+    assert {(e, c): n for e, d in er.ENCODERS.items() for c, n in d.items()} == NAMES
+
+
+@pytest.mark.parametrize("encoder,codec", list(NAMES))
+def test_each_encoder_command_uses_the_exact_ffmpeg_name(encoder, codec):
     c = cmd(encoder, codec)
-    name = opt(c, "-c:v")
-    assert name == er.ENCODERS[encoder][codec]
-    assert suffix in name or codec in name
+    assert opt(c, "-c:v") == NAMES[(encoder, codec)]
     assert c[0] == "ffmpeg" and c[-1] == OUT
     assert opt(c, "-i") == PATTERN and opt(c, "-framerate") == "18"
 
@@ -186,6 +198,7 @@ def test_fallback_tries_next_encoder_and_reports_which_produced_the_file(tmp_pat
         seen.append(opt(command, "-c:v"))
         if len(seen) == 1:
             return 1, "Error initializing output stream: Cannot load libcuda.so.1"
+        Path(command[-1]).write_bytes(b"mp4")
         return 0, ""
 
     probe = probe_with(CANNED)
@@ -223,7 +236,7 @@ def test_dry_run_prints_the_command_and_does_not_run_ffmpeg(tmp_path, capsys):
     code = er.main([str(reel), "--dry-run", "--encoder", "cpu"], probe=probe_with(CANNED), encode=never)
     out = capsys.readouterr().out
     assert code == 0
-    assert "libx264" in out and str(reel / "reel.mp4") in out and "frame_%08d.png" in out
+    assert "libx264" in out and str(reel / "reel.part.mp4") in out and "frame_%08d.png" in out
 
 
 def test_dry_run_with_gaps_warns_and_uses_a_concat_list(tmp_path, capsys):
@@ -238,7 +251,7 @@ def test_output_option(tmp_path, capsys):
     reel = make_reel(tmp_path, [0])
     er.main([str(reel), "--dry-run", "--encoder", "cpu", "--output", str(tmp_path / "x.mp4")],
             probe=probe_with(CANNED))
-    assert str(tmp_path / "x.mp4") in capsys.readouterr().out
+    assert str(tmp_path / "x.part.mp4") in capsys.readouterr().out
 
 
 def test_list_encoders_needs_no_reel(capsys):
@@ -264,3 +277,58 @@ def test_bad_arguments_return_2(tmp_path):
 def test_cpu_path_command_is_the_documented_manual_line():
     c = cmd("cpu")
     assert c[c.index("-c:v"):c.index("-c:v") + 4] == ["-c:v", "libx264", "-preset", "slower"]
+
+
+def part_of(out):
+    return out.with_name(out.stem + ".part" + out.suffix)
+
+
+def test_failed_start_keeps_an_existing_output(tmp_path):
+    reel = make_reel(tmp_path, [0, 1])
+    (reel / "reel.mp4").write_bytes(b"old")
+    code = er.main([str(reel), "--encoder", "cpu"], probe=probe_with(CANNED),
+                   encode=lambda c, f: (127, "cannot run ffmpeg"))
+    assert code == 1
+    assert (reel / "reel.mp4").read_bytes() == b"old"
+    assert not part_of(reel / "reel.mp4").exists()
+
+
+def test_failed_encode_keeps_an_existing_output_and_removes_the_part_file(tmp_path):
+    reel = make_reel(tmp_path, [0, 1])
+    (reel / "reel.mp4").write_bytes(b"old")
+
+    def encode(command, on_frame):
+        Path(command[-1]).write_bytes(b"half")
+        return 1, "disk full"
+
+    assert er.main([str(reel), "--encoder", "cpu"], probe=probe_with(CANNED), encode=encode) == 1
+    assert (reel / "reel.mp4").read_bytes() == b"old"
+    assert not part_of(reel / "reel.mp4").exists()
+
+
+def test_success_replaces_the_output_and_leaves_no_part_file(tmp_path):
+    reel = make_reel(tmp_path, [0, 1])
+    (reel / "reel.mp4").write_bytes(b"old")
+
+    def encode(command, on_frame):
+        assert command[-1] == str(part_of(reel / "reel.mp4"))
+        Path(command[-1]).write_bytes(b"new")
+        return 0, ""
+
+    assert er.main([str(reel), "--encoder", "cpu"], probe=probe_with(CANNED), encode=encode) == 0
+    assert (reel / "reel.mp4").read_bytes() == b"new"
+    assert not part_of(reel / "reel.mp4").exists()
+
+
+def test_dry_run_shows_the_part_path(tmp_path, capsys):
+    reel = make_reel(tmp_path, [0])
+    er.main([str(reel), "--dry-run", "--encoder", "cpu"], probe=probe_with(CANNED))
+    assert "reel.part.mp4" in capsys.readouterr().out
+
+
+def test_quality_must_be_an_integer(tmp_path, capsys):
+    reel = make_reel(tmp_path, [0])
+    assert er.main([str(reel), "--quality", "20.5"], probe=probe_with(CANNED)) == 2
+    assert er.main([str(reel), "--dry-run", "--encoder", "cpu", "--quality", "20"],
+                   probe=probe_with(CANNED)) == 0
+    assert "-crf 20 " in capsys.readouterr().out

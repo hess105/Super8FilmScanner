@@ -110,7 +110,8 @@ The device only collects frames; they are the master. `tools/encode_reel.py REEL
 - Quality is one number per encoder (`cpu` CRF 15 with `-preset slower`; the others map to their constant-quality flag, see the README). Frames are scaled to even dimensions (`scale=trunc(iw/2)*2:trunc(ih/2)*2`), or `scale=-2:H` with `--height`.
 - If frame numbers are missing between the first and last, the tool warns and feeds ffmpeg a temporary concat list of the frames that exist (each shown for 1/fps), so timing stays even.
 - Progress comes from `ffmpeg -progress pipe:1`, printed at most once a second. `--dry-run` prints the command; `--list-encoders` shows what the ffmpeg offers.
-- Testing: pytest covers command building for every encoder and codec, encoder ordering, `ffmpeg -encoders` parsing, gap detection, the concat list, progress parsing, fallback and the CLI, all with injected runners. Only the CPU path and VideoToolbox (once, synthetic frames, on a Mac) have been run. nvenc, qsv, amf and vaapi have never been run, and their default quality values are unverified.
+- Testing: pytest covers command building for every encoder and codec, encoder ordering, `ffmpeg -encoders` parsing, gap detection, the concat list, progress parsing, fallback and the CLI, all with injected runners. Only these have been run, by hand, on one Mac with synthetic frames and never on a real scan: `libx264`, `libx265` and `h264_videotoolbox`. `hevc_videotoolbox` and every NVIDIA (nvenc), Intel (qsv), AMD (amf) and VAAPI encoder, for both H.264 and HEVC, have not been run. Default quality values for the hardware encoders are unverified.
+- Output: ffmpeg writes `<name>.part.mp4` next to the final file and the tool renames it over the output only on success, so a failed run never removes or damages an existing `reel.mp4`; a successful run replaces it.
 
 By hand, for the CPU path:
 

@@ -94,7 +94,7 @@ Deferred review findings, none blocking. Each is a checkbox: file, one-line fix.
 - [ ] Pi camera capture (Task 9).
 - [ ] End-to-end check on the machine (Task 14).
 - [ ] Encode a first MP4 on a desktop with `tools/encode_reel.py` from a real test scan (only synthetic PNGs have been encoded so far).
-- [ ] Test each GPU encoder on real hardware: `nvenc`, `qsv`, `amf` and `vaapi` have never been run (pytest only checks the command text). `videotoolbox` was run once on a Mac with synthetic frames, not on a scan.
+- [ ] Test each GPU encoder on real hardware: `nvenc`, `qsv`, `amf` and `vaapi` (both codecs) and `hevc_videotoolbox` have never been run (pytest only checks the command text). `h264_videotoolbox`, `libx264` and `libx265` were run on one Mac with synthetic frames only.
 - [ ] Verify the default quality value per encoder on a real scan (`cpu` 15 is the legacy value; `nvenc` 19, `qsv` 20, `amf` 18, `vaapi` 20 are unverified guesses, `videotoolbox` 65 is only known to be accepted).
 - [ ] The web page in a browser.
 

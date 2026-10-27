@@ -31,12 +31,12 @@ The Pi only collects frames. Copy `scans/<name>/` to a desktop and encode it the
 
 This writes `scans/<name>/reel.mp4` (H.264, 18 fps). It needs only Python 3 and ffmpeg. With `--encoder auto` (the default) it uses the first hardware encoder your ffmpeg offers (nvenc, videotoolbox, qsv, amf, vaapi) and falls back to the CPU encoder if that one fails to start; it prints which one made the file. Useful options:
 
-- `--encoder cpu|nvenc|videotoolbox|qsv|amf|vaapi` to force one (no fallback), `--codec hevc` for H.265, `--height 1080` for a smaller copy, `--output PATH`, `--fps N`.
+- `--encoder cpu|nvenc|videotoolbox|qsv|amf|vaapi` to force one (no fallback), `--codec hevc` for H.265, `--height 1080` for a smaller copy, `--output PATH`, `--fps N` (integer). Encoding goes to `reel.part.mp4` first and replaces `reel.mp4` only on success, so a failed run keeps an earlier file.
 - `--quality N`: one number whose meaning depends on the encoder. `cpu`: CRF, lower is better, default 15. `nvenc`, `qsv`, `amf`, `vaapi`: quantizer, lower is better (defaults 19, 20, 18, 20). `videotoolbox`: 0-100, higher is better (default 65).
 - `--list-encoders` shows what your ffmpeg offers and which one auto would pick. `--dry-run` prints the exact ffmpeg command and exits without encoding.
 - Missing frames (a lost write) are listed in a warning; the video skips them.
 
-What is tested: pytest checks the command building for every encoder and the CPU path's command, with no ffmpeg needed. Only the CPU encoder and VideoToolbox (once, on a Mac, with synthetic frames) have been run. The `nvenc`, `qsv`, `amf` and `vaapi` encoders have not been run on real hardware, and their default quality values are unverified, so check the first result by eye. If one fails, use `--encoder cpu`.
+What is tested: pytest checks the command building for every encoder and the CPU path's command, with no ffmpeg needed. Only these have been run, by hand, on one Mac with synthetic frames and never on a real scan: `libx264`, `libx265` and `h264_videotoolbox`. `hevc_videotoolbox` and every NVIDIA (nvenc), Intel (qsv), AMD (amf) and VAAPI encoder, for both H.264 and HEVC, have not been run. The default quality values for the hardware encoders are unverified, so check the first result by eye. If one fails, use `--encoder cpu`.
 
 Without the tool, this ffmpeg command does the same for the CPU path, from inside the reel folder:
 

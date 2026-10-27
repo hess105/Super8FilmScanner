@@ -3,6 +3,7 @@
 Standard library only. The Pi never imports this file.
 """
 import argparse
+import os
 import re
 import shlex
 import shutil
@@ -159,7 +160,7 @@ def _parser():
     p.add_argument("--encoder", default="auto", choices=["auto", *ENCODERS])
     p.add_argument("--codec", default="h264", choices=["h264", "hevc"])
     p.add_argument("--height", type=int, help="scale to this height (width follows)")
-    p.add_argument("--quality", type=float, help="one number; meaning depends on the encoder, see the README")
+    p.add_argument("--quality", type=int, help="one number; meaning depends on the encoder, see the README")
     p.add_argument("--dry-run", action="store_true", help="print the ffmpeg command and exit")
     p.add_argument("--list-encoders", action="store_true")
     p.add_argument("--ffmpeg", default="ffmpeg", help="path to the ffmpeg program")
@@ -210,8 +211,10 @@ def main(argv=None, probe=subprocess.run, encode=run_ffmpeg):
     else:
         source = str(frames / "frame_%08d.png")
 
+    part = out.with_name(out.stem + ".part" + out.suffix)  # same folder, so os.replace is atomic
+
     def command(e):
-        return build_command(source, out, a.fps, e, a.codec, a.height, a.quality, nums[0], a.ffmpeg)
+        return build_command(source, part, a.fps, e, a.codec, a.height, a.quality, nums[0], a.ffmpeg)
 
     try:
         if a.dry_run:
@@ -222,9 +225,10 @@ def main(argv=None, probe=subprocess.run, encode=run_ffmpeg):
             started = time.monotonic()
             code, detail = encode(command(e), progress_printer(len(nums)))
             if code == 0:
+                os.replace(part, out)
                 print(f"wrote {out} using {e}")
                 return 0
-            out.unlink(missing_ok=True)  # partial file
+            part.unlink(missing_ok=True)  # never touches an existing output
             print(f"{e} failed (exit {code}): {detail or 'no message'}", file=sys.stderr)
             if i + 1 == len(order) or not _startup_failure(code, time.monotonic() - started, detail):
                 return 1
