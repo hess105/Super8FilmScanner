@@ -71,9 +71,17 @@ async function poll() {
     if (s.state === "running" || s.state === "paused") refreshPreview();
   } catch (e) { $("status").textContent = "cannot reach scanner"; }
 }
-refreshPreview();
-setInterval(poll, 1500);
-poll();
+async function init() {
+  try {  // HTML defaults stay as fallback if this fails
+    const c = await api("/api/settings");
+    $("light").value = c.light_percent; $("lightv").textContent = c.light_percent;
+    $("exp").value = c.exposure_us; $("gain").value = c.gain;
+  } catch (e) {}
+  refreshPreview();
+  setInterval(poll, 1500);
+  poll();
+}
+init();
 </script>
 </body>
 </html>

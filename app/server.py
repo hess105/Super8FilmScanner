@@ -39,6 +39,11 @@ def create_app(runner):
     def status():
         return runner.status()
 
+    @app.get("/api/settings")
+    def settings():
+        st = runner.settings
+        return {"light_percent": st.light_percent, "exposure_us": st.exposure_us, "gain": st.gain}
+
     @app.post("/api/scan/start")
     def start(req: StartRequest):
         call(runner.start, req.name)
