@@ -33,7 +33,7 @@ These durations are estimates for one person working about 8-10 hours a week, an
   - [ ] DigiKey: Mean Well LDD-350L 1866-3109-ND (1; one page shows a 12-week lead time). Alternatives: LDD-350LW, LDD-350LS (different pins), or LDD-700L (more heat).
   - [ ] DigiKey: T-Global TGH-0400-03 heat sink (1; stock and 15-week lead text contradict). Alternative: TGH-0300-03. Its thermal resistance is unread: do the case-temperature check in `docs/design/wiring.md` section 6.
   - [ ] DigiKey: Littelfuse 03455LS1H fuse holder (1) and a 2.5-3.15 A slow-blow 5 x 20 mm fuse (rating VERIFY).
-  - [ ] DigiKey: Rubycon 35YXJ100MT16.3X11 capacitors (3; or a 50 V 100 uF part, stock not searched).
+  - [ ] DigiKey: Rubycon 35YXJ100MT16.3X11 capacitors (3: two plus one spare; or a 50 V 100 uF part, stock not searched).
   - [ ] Adafruit TMC2209 breakout, product 6121 (2): check DigiKey (a listed reseller) first; if no stock, buy from Adafruit.
   - [ ] Not DigiKey: Pi 4 2 GB (compare DigiKey SC0193(11) with a reseller), HQ camera, lens, motors, generic UL-listed 24 V 2 A 5.5 x 2.1 mm centre-positive adapter (DigiKey alternative: Bel SDI50-24-UC-P5), Pi USB-C 5.1 V 3 A supply, diffuser, a storage drive.
 - [ ] Set up Pi OS Bookworm and install per the README.
