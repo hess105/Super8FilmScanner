@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Super 8 Scanner</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #15171a; --surface: #1c1f23; --raised: #252930; --line: #323740;
+    --text: #e7e9ec; --muted: #9aa2ad; --faint: #6b7380;
+    --accent: #b6a2f7; --accent-ink: #17131f;
+    --ok: #72d39b; --warn: #eab54e; --err: #f27f76; --info: #70b8f2; --teal: #52c8ba; --idle: #8b939e;
+    --gate: #0d0e10; --term-bg: #101215; --term-text: #d5d9de;
+    --radius-l: 14px; --radius-s: 8px;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f2f3f5; --surface: #ffffff; --raised: #eceef2; --line: #d5d9e0;
+      --text: #1a1d21; --muted: #59626e; --faint: #7c8591;
+      --accent: #5b3fd0; --accent-ink: #ffffff;
+      --ok: #1b8549; --warn: #9a6200; --err: #c23a2e; --info: #1f6cb0; --teal: #127a6f; --idle: #6b7380;
+      --gate: #1a1c20; --term-bg: #fbfbfc; --term-text: #24282e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 var(--sans); }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* layout */
+  .page { max-width: 1240px; margin: 0 auto; padding: 0 16px 32px; display: grid; gap: 20px;
+          grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: "head head" "main side" "term term"; }
+  header { grid-area: head; display: flex; align-items: center; gap: 14px; padding: 18px 0 4px; flex-wrap: wrap; }
+  main { grid-area: main; min-width: 0; }
+  aside { grid-area: side; display: grid; gap: 16px; align-content: start; min-width: 0; }
+  #dock { grid-area: term; min-width: 0; }
+  @media (max-width: 900px) {
+    .page { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "main" "side" "term"; }
+  }
+
+  /* header */
+  h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -0.01em; margin: 0; margin-right: auto; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 10px; border-radius: 999px;
+          font-size: 0.9rem; font-weight: 600; color: var(--st); background: color-mix(in srgb, var(--st) 14%, transparent);
+          border: 1px solid color-mix(in srgb, var(--st) 35%, transparent); transition: color .25s, background-color .25s, border-color .25s; }
+  .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--st); }
+  .pill[data-state="idle"] { --st: var(--idle); } .pill[data-state="running"] { --st: var(--ok); }
+  .pill[data-state="paused"] { --st: var(--warn); } .pill[data-state="finishing"] { --st: var(--info); }
+  .pill[data-state="done"] { --st: var(--teal); } .pill[data-state="error"] { --st: var(--err); }
+  .conn { display: inline-flex; align-items: center; gap: 7px; font-size: 0.85rem; color: var(--muted); }
+  .conn i { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
+  .conn[data-ok="false"] i { background: var(--err); }
+  .conn[data-ok="false"] { color: var(--err); }
+
+  /* preview gate */
+  .gate { position: relative; aspect-ratio: 4 / 3; background: var(--gate); border-radius: var(--radius-l);
+          overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  .gate img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+  .gate img.broken { visibility: hidden; }
+  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #8a919b; font-size: 0.95rem; }
+  .placeholder[hidden] { display: none; }
+  .target { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--accent); opacity: .85; pointer-events: none; }
+  .target[hidden] { display: none; }
+  .target span { position: absolute; right: 10px; top: -22px; font: 12px/1 var(--mono); color: var(--accent);
+                 background: rgba(13,14,16,.75); padding: 4px 6px; border-radius: 4px; }
+  .target b { position: absolute; top: -6px; width: 2px; height: 12px; background: var(--accent); }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; margin-top: 14px;
+           background: var(--line); border: 1px solid var(--line); border-radius: var(--radius-s); overflow: hidden; }
+  .stats div { background: var(--surface); padding: 10px 14px; min-width: 0; }
+  .stats dt { font-size: 0.8rem; color: var(--muted); }
+  .stats dd { margin: 2px 0 0; font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stats dd small { font-size: 0.8rem; font-weight: 500; color: var(--muted); margin-left: 3px; }
+  @media (max-width: 560px) {
+    .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .stats dd { font-size: 1.15rem; }
+    .stats div:last-child { grid-column: span 2; }
+  }
+
+  /* cards */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-l); padding: 16px 18px 18px; }
+  .card h2 { font-size: 1rem; font-weight: 650; margin: 0 0 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .card h2 small { font-size: 0.8rem; font-weight: 500; color: var(--muted); }
+  .field { display: grid; gap: 6px; margin-bottom: 12px; }
+  .field label, .label { font-size: 0.85rem; color: var(--muted); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 0; min-width: 0; }
+  input[type=text], input[type=number] { width: 100%; min-height: 44px; padding: 8px 12px; background: var(--raised);
+          border: 1px solid var(--line); border-radius: var(--radius-s); }
+  input:disabled { opacity: .55; }
+  button { min-height: 44px; padding: 8px 14px; border-radius: var(--radius-s); border: 1px solid var(--line);
+           background: var(--raised); font-weight: 550; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--faint); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.danger:not(:disabled) { color: var(--err); }
+  .slider { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+  .slider input { flex: 1; min-width: 0; accent-color: var(--accent); height: 44px; margin: 0; }
+  .slider output { width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .lock { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--warn); margin: 0 0 12px; }
+  .lock[hidden] { display: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip { font: 13px/1 var(--mono); padding: 6px 8px; border-radius: 6px; background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+  .empty { color: var(--muted); font-size: 0.9rem; margin: 0; }
+  #last-error { color: var(--err); font-size: 0.9rem; margin: 0; overflow-wrap: anywhere; }
+  #last-error:empty { display: none; }
+
+  /* toast */
+  #toast { position: fixed; left: 50%; top: 16px; pointer-events: none; transform: translateX(-50%); max-width: min(560px, calc(100vw - 32px));
+           padding: 12px 16px; border-radius: var(--radius-s); background: var(--raised); border: 1px solid var(--line);
+           box-shadow: 0 8px 24px rgba(0,0,0,.3); font-size: 0.95rem; z-index: 10; }
+  #toast:empty { display: none; }
+  #toast.ok { color: var(--ok); } #toast.err { color: var(--err); }
+
+  /* terminal */
+  #dock { background: var(--term-bg); border: 1px solid var(--line); border-radius: var(--radius-l); overflow: hidden; }
+  .dock-head { display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 16px; border-bottom: 1px solid var(--line); }
+  #dock.collapsed .dock-head { border-bottom: 0; }
+  .dock-head h2 { font-size: 0.95rem; font-weight: 650; margin: 0; }
+  #term-count { white-space: nowrap; font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; margin-right: auto; }
+  .ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 8px 10px; }
+  .ghost:hover:not(:disabled) { color: var(--text); border-color: var(--line); }
+  #term-toggle svg { transition: transform .2s; }
+  #dock.collapsed #term-toggle svg { transform: rotate(-90deg); }
+  #dock.collapsed .dock-body { display: none; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .filters button { font-size: 0.85rem; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;
+                    background: transparent; color: var(--muted); }
+  .filters button[aria-pressed="true"] { color: var(--text); background: var(--raised); }
+  .filters button::before { content: attr(data-mark); font-family: var(--mono); color: var(--k); }
+  .filters button[aria-pressed="false"]::before { color: var(--faint); }
+  @media (max-width: 480px) {
+    .filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .filters button { padding: 6px 4px; justify-content: center; font-size: 0.8rem; }
+  }
+  .k-cmd { --k: var(--accent); } .k-reply { --k: var(--ok); } .k-event { --k: var(--muted); } .k-error { --k: var(--err); } .k-local { --k: var(--faint); }
+  .term-wrap { position: relative; }
+  #terminal { font: 13.5px/1.6 var(--mono); color: var(--term-text); height: calc(14 * 1.6em + 20px); min-height: 120px;
+              resize: vertical; overflow: auto; padding: 10px 0; margin: 0; }
+  #terminal > div { display: grid; grid-template-columns: 9ch 2ch minmax(0, 1fr); gap: 0 1ch; padding: 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #terminal > div:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+  #terminal time { color: var(--faint); }
+  #terminal .m { color: var(--k); }
+  #terminal .k-error .x, #terminal .k-cmd .x { color: var(--k); }
+  #terminal .k-event .x, #terminal .k-local .x { color: var(--muted); }
+  #terminal.hide-cmd .k-cmd, #terminal.hide-reply .k-reply, #terminal.hide-event .k-event, #terminal.hide-error .k-error { display: none; }
+  #jump { position: absolute; right: 18px; bottom: 12px; background: var(--accent); color: var(--accent-ink); border: 0; font-size: 0.85rem; }
+  #jump[hidden] { display: none; }
+  .prompt { display: flex; align-items: center; gap: 10px; padding: 4px 16px; border-top: 1px solid var(--line); font-family: var(--mono); }
+  .prompt span { color: var(--accent); font-size: 1.1rem; }
+  #term-input { flex: 1; min-width: 0; min-height: 44px; background: transparent; border: 0; font: 14px var(--mono); color: var(--term-text); padding: 0; }
+  #term-input:focus-visible { outline: none; }
+  .prompt:focus-within { box-shadow: inset 2px 0 0 var(--accent); }
+  #term-input::placeholder { color: var(--faint); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Super 8 Scanner</h1>
+    <span id="state-pill" class="pill" data-state="idle"><span class="sr-only">Scanner state: </span><span id="state-text">Idle</span></span>
+    <span id="conn" class="conn" data-ok="true"><i aria-hidden="true"></i><span id="conn-text">Connected</span></span>
+  </header>
+
+  <main>
+    <div class="gate" id="gate">
+      <img id="preview" alt="Live view of the film gate">
+      <div id="placeholder" class="placeholder" hidden>Waiting for first frame</div>
+      <div id="target" class="target" hidden><b></b><span>target row</span></div>
+    </div>
+    <dl class="stats">
+      <div><dt>Frames</dt><dd id="st-frames">0</dd></div>
+      <div><dt>Flagged</dt><dd id="st-flagged">0</dd></div>
+      <div><dt>Rate</dt><dd><span id="st-rate">0</span><small>fps</small></dd></div>
+      <div><dt>Elapsed</dt><dd id="st-elapsed">0:00</dd></div>
+      <div><dt>Free disk</dt><dd><span id="st-disk">–</span><small>GB</small></dd></div>
+    </dl>
+  </main>
+
+  <aside>
+    <section class="card" aria-labelledby="h-scan">
+      <h2 id="h-scan">Scan <small id="scan-name"></small></h2>
+      <div class="field">
+        <label for="reel">Reel name</label>
+        <input id="reel" type="text" value="reel1" maxlength="64" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <button id="btn-start" class="primary">Start</button>
+        <button id="btn-stop" class="danger">Stop</button>
+      </div>
+      <div class="row">
+        <button id="btn-pause">Pause</button>
+        <button id="btn-resume">Resume</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="h-cam">
+      <h2 id="h-cam">Camera and light</h2>
+      <p id="cam-lock" class="lock" hidden>
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h1v8H3V7h1zm2 0h4V5a2 2 0 1 0-4 0v2z"/></svg>
+        Locked while scanning
+      </p>
+      <div class="field">
+        <label for="light">Light</label>
+        <div class="slider"><input id="light" type="range" min="0" max="100" value="100"><output id="light-v" for="light">100%</output></div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="exp">Exposure (µs)</label><input id="exp" type="number" min="1" step="1" value="2000" inputmode="numeric"></div>
+        <div class="field"><label for="gain">Gain</label><input id="gain" type="number" min="1" max="16" step="0.1" value="1" inputmode="decimal"></div>
+      </div>
+      <div class="row">
+        <button id="btn-apply">Apply</button>
+        <button id="btn-test">Test frame</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="h-prob">
+      <h2 id="h-prob">Problems</h2>
+      <div class="label" style="margin-bottom:6px">Flagged frames</div>
+      <div id="chips" class="chips"></div>
+      <p id="no-flags" class="empty">None so far.</p>
+      <p id="last-error"></p>
+    </section>
+  </aside>
+
+  <section id="dock" aria-labelledby="h-term">
+    <div class="dock-head">
+      <h2 id="h-term">Terminal</h2>
+      <span id="term-count">0 lines</span>
+      <button id="term-copy" class="ghost">Copy</button>
+      <button id="term-clear" class="ghost">Clear</button>
+      <button id="term-toggle" class="ghost" aria-expanded="true" aria-controls="dock-body">
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 6l5 5 5-5"/></svg>
+        <span class="sr-only">Collapse terminal</span>
+      </button>
+    </div>
+    <div id="dock-body" class="dock-body">
+      <div class="filters" role="group" aria-label="Show line kinds">
+        <button class="k-cmd" data-kind="cmd" data-mark="→" aria-pressed="true">Commands</button>
+        <button class="k-reply" data-kind="reply" data-mark="←" aria-pressed="true">Replies</button>
+        <button class="k-event" data-kind="event" data-mark="●" aria-pressed="true">Events</button>
+        <button class="k-error" data-kind="error" data-mark="✗" aria-pressed="true">Errors</button>
+      </div>
+      <div class="term-wrap">
+        <div id="terminal" role="log" aria-live="off" aria-label="Controller traffic and scan events" tabindex="0"></div>
+        <button id="jump" hidden>Jump to latest</button>
+      </div>
+      <div class="prompt">
+        <span aria-hidden="true">›</span>
+        <label for="term-input" class="sr-only">Controller command</label>
+        <input id="term-input" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Type a command, or help">
+      </div>
+    </div>
+  </section>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("s8." + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("s8." + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+// ---- requests and messages ------------------------------------------------
+class ApiError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
+function readable(detail, status) {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail) && detail.length) {
+    const d = detail[0], field = (d.loc || []).filter(x => x !== "body").join(" ").replace(/_/g, " ");
+    const msg = String(d.msg || "is not valid").replace(/^Value error, /, "");
+    return field ? field.charAt(0).toUpperCase() + field.slice(1) + ": " + msg.charAt(0).toLowerCase() + msg.slice(1) : msg;
+  }
+  return "The scanner refused the request (HTTP " + status + ")";
+}
+async function api(path, body) {
+  const opts = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
+  let r;
+  try { r = await fetch(path, opts); } catch (e) { throw new ApiError("Cannot reach the scanner", 0); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError(readable(data.detail, r.status), r.status);
+  return data;
+}
+let toastTimer;
+function toast(text, kind) {
+  const t = $("toast");
+  t.textContent = text; t.className = kind;
+  // just under the header while it is on screen, so the state pill stays visible
+  t.style.top = Math.max(16, document.querySelector("header").getBoundingClientRect().bottom + 8) + "px";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.textContent = ""; }, kind === "err" ? 8000 : 4000);
+}
+async function act(fn, okText) {
+  try { const r = await fn(); if (okText) toast(okText, "ok"); poll(); return r; }
+  catch (e) { toast(e.message, "err"); return null; }
+}
+
+// ---- status -----------------------------------------------------------------
+const LABEL = {idle: "Idle", running: "Running", paused: "Paused", finishing: "Finishing", done: "Done", error: "Error"};
+let state = "idle", targetFrac = null;
+function setConn(ok) {
+  $("conn").dataset.ok = ok;
+  $("conn-text").textContent = ok ? "Connected" : "Disconnected, retrying";
+}
+function fmtElapsed(s) {
+  s = Math.floor(s || 0);
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, "0");
+  return h ? h + ":" + String(m).padStart(2, "0") + ":" + sec : m + ":" + sec;
+}
+function applyState(s) {
+  state = s.state;
+  const pill = $("state-pill");
+  pill.dataset.state = state; $("state-text").textContent = LABEL[state] || state;
+  const busy = ["running", "paused", "finishing"].includes(state);
+  $("btn-start").disabled = !["idle", "done", "error"].includes(state);
+  $("btn-pause").disabled = state !== "running";
+  $("btn-resume").disabled = state !== "paused";
+  $("btn-stop").disabled = !(state === "running" || state === "paused");
+  for (const id of ["light", "exp", "gain", "btn-apply", "btn-test"]) $(id).disabled = busy;
+  $("reel").disabled = busy;
+  $("cam-lock").hidden = !busy;
+  const input = $("term-input");
+  input.disabled = busy;
+  input.placeholder = busy ? "Locked while a scan is running" : "Type a command, or help";
+  $("scan-name").textContent = s.name || "";
+  $("st-frames").textContent = s.frame;
+  $("st-flagged").textContent = s.flagged;
+  $("st-rate").textContent = (s.rate_fps || 0).toFixed(1);
+  $("st-elapsed").textContent = fmtElapsed(s.elapsed_s);
+  $("st-disk").textContent = s.disk_free_gb == null ? "–" : s.disk_free_gb.toFixed(1);
+  const chips = $("chips");
+  const flags = s.flagged_frames || [];
+  if (chips.dataset.key !== flags.join(",")) {
+    chips.dataset.key = flags.join(",");
+    chips.replaceChildren(...flags.map(n => { const c = document.createElement("span"); c.className = "chip"; c.textContent = "#" + n; return c; }));
+  }
+  $("no-flags").hidden = flags.length > 0;
+  $("last-error").textContent = s.error || "";
+  targetFrac = s.target_frac;
+  placeTarget();
+  if (busy) refreshPreview();
+}
+let polling = false;
+async function poll() {
+  if (polling) return;
+  polling = true;
+  try { applyState(await api("/api/status")); setConn(true); }
+  catch (e) { setConn(false); }
+  finally { polling = false; }
+}
+
+// ---- preview ----------------------------------------------------------------
+const img = $("preview");
+let loading = false;
+function refreshPreview() {
+  if (loading) return;
+  loading = true;
+  img.src = "/api/preview.jpg?t=" + Date.now();
+}
+img.onload = () => { loading = false; img.classList.remove("broken"); $("placeholder").hidden = true; placeTarget(); };
+img.onerror = () => { loading = false; img.classList.add("broken"); $("placeholder").hidden = false; };
+function placeTarget() {
+  const t = $("target");
+  if (!targetFrac || !img.naturalWidth || img.classList.contains("broken")) { t.hidden = true; return; }
+  const bw = img.clientWidth, bh = img.clientHeight, scale = Math.min(bw / img.naturalWidth, bh / img.naturalHeight);
+  const w = img.naturalWidth * scale, h = img.naturalHeight * scale, x0 = (bw - w) / 2, y0 = (bh - h) / 2;
+  t.style.left = x0 + "px"; t.style.right = x0 + "px";
+  t.style.top = (y0 + targetFrac[1] * h) + "px";
+  t.querySelector("b").style.left = (targetFrac[0] * w - 1) + "px";
+  t.hidden = false;
+}
+new ResizeObserver(placeTarget).observe($("gate"));
+
+// ---- controls ---------------------------------------------------------------
+async function loadSettings() {
+  try {
+    const c = await api("/api/settings");
+    $("light").value = c.light_percent; $("light-v").textContent = c.light_percent + "%";
+    $("exp").value = c.exposure_us; $("gain").value = c.gain;
+  } catch (e) {}
+}
+$("btn-start").onclick = () => act(() => api("/api/scan/start", {name: $("reel").value.trim()}), "Scan started");
+$("btn-pause").onclick = () => act(() => api("/api/scan/pause", {}), "Paused");
+$("btn-resume").onclick = () => act(() => api("/api/scan/resume", {}), "Resumed");
+$("btn-stop").onclick = () => act(() => api("/api/scan/stop", {}), "Stopping after the current frame");
+$("btn-test").onclick = async () => {
+  const r = await act(() => api("/api/test-frame", {}));
+  if (!r) return;
+  toast(r.detected ? "Sprocket hole found at " + Math.round(r.x) + ", " + Math.round(r.y) : "Sprocket hole not found",
+        r.detected ? "ok" : "err");
+  refreshPreview();
+};
+$("light").oninput = () => { $("light-v").textContent = $("light").value + "%"; };
+$("light").onchange = async () => {
+  const p = +$("light").value;
+  if (await act(() => api("/api/light", {percent: p}), "Light set to " + p + "%")) refreshPreview();
+  else loadSettings();
+};
+$("btn-apply").onclick = async () => {
+  const body = {exposure_us: Math.round(+$("exp").value), gain: +$("gain").value};
+  if (await act(() => api("/api/exposure", body), "Exposure " + body.exposure_us + " µs, gain " + body.gain)) refreshPreview();
+  else loadSettings();
+};
+
+// ---- terminal ---------------------------------------------------------------
+const term = $("terminal"), MAX_LINES = 1000, MARK = {cmd: "→", reply: "←", event: "●", error: "✗", local: " "};
+let since = 0, stick = true;
+const storedKinds = store.get("hiddenKinds", []), storedHistory = store.get("history", []);
+const hidden = new Set(Array.isArray(storedKinds) ? storedKinds.filter(k => k in MARK) : []);
+let history = Array.isArray(storedHistory) ? storedHistory.filter(h => typeof h === "string").slice(-50) : [];
+let histPos = history.length;
+
+function hhmmss(t) { return new Date(t * 1000).toTimeString().slice(0, 8); }
+function addLine(kind, text, t) {
+  const row = document.createElement("div");
+  row.className = "k-" + kind;
+  const time = document.createElement("time"), m = document.createElement("span"), x = document.createElement("span");
+  time.textContent = hhmmss(t ?? Date.now() / 1000);
+  m.className = "m"; m.textContent = MARK[kind] || "·";
+  x.className = "x"; x.textContent = text;
+  row.append(time, m, x);
+  term.append(row);
+}
+function afterAppend() {
+  while (term.childElementCount > MAX_LINES) term.firstElementChild.remove();
+  const n = term.childElementCount;
+  $("term-count").textContent = n + (n === 1 ? " line" : " lines");
+  if (stick) term.scrollTop = term.scrollHeight;
+}
+term.addEventListener("scroll", () => {
+  stick = term.scrollTop + term.clientHeight >= term.scrollHeight - 8;
+  $("jump").hidden = stick;
+});
+$("jump").onclick = () => { stick = true; term.scrollTop = term.scrollHeight; $("jump").hidden = true; };
+
+function applyFilters() {
+  for (const b of document.querySelectorAll(".filters button")) {
+    const on = !hidden.has(b.dataset.kind);
+    b.setAttribute("aria-pressed", on);
+    term.classList.toggle("hide-" + b.dataset.kind, !on);
+  }
+}
+for (const b of document.querySelectorAll(".filters button")) {
+  b.onclick = () => {
+    const k = b.dataset.kind;
+    hidden.has(k) ? hidden.delete(k) : hidden.add(k);
+    store.set("hiddenKinds", [...hidden]);
+    applyFilters();
+    if (stick) term.scrollTop = term.scrollHeight;
+  };
+}
+applyFilters();
+
+$("term-clear").onclick = () => { term.replaceChildren(); afterAppend(); $("jump").hidden = true; stick = true; };
+$("term-copy").onclick = async () => {
+  const lines = [...term.children].filter(r => !hidden.has(r.className.slice(2)))  // works while collapsed
+    .map(r => [...r.children].map(c => c.textContent).join(" "));
+  if (!lines.length) { toast("Nothing to copy", "err"); return; }
+  const text = lines.join("\n");
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {  // plain http on the LAN has no clipboard API
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.append(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch (e2) {}
+    ta.remove();
+    if (!ok) { toast("Copy is not available in this browser", "err"); return; }
+  }
+  toast("Copied " + lines.length + (lines.length === 1 ? " line" : " lines"), "ok");
+};
+
+function setCollapsed(c) {
+  $("dock").classList.toggle("collapsed", c);
+  $("term-toggle").setAttribute("aria-expanded", !c);
+  $("term-toggle").querySelector(".sr-only").textContent = c ? "Expand terminal" : "Collapse terminal";
+  store.set("termCollapsed", c);
+  if (!c) term.scrollTop = term.scrollHeight;
+}
+$("term-toggle").onclick = () => setCollapsed(!$("dock").classList.contains("collapsed"));
+setCollapsed(store.get("termCollapsed", false) === true);
+
+const HELP = [
+  "ADVANCE steps [rate]   move the film; negative steps go back",
+  "WIND steps [rate]      turn the take-up spool",
+  "LIGHT percent          set the light, 0 to 100 (RCD-24 driver: 0 is full on until the firmware PWM item lands, see wiring.md section 6)",
+  "STATUS                 ask the controller for its status",
+  "help, clear            this list; clear the view",
+];
+$("term-input").addEventListener("keydown", async e => {
+  const input = e.target;
+  if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+    if (!history.length) return;
+    e.preventDefault();
+    histPos = Math.max(0, Math.min(history.length, histPos + (e.key === "ArrowUp" ? -1 : 1)));
+    input.value = history[histPos] || "";
+    return;
+  }
+  if (e.key !== "Enter") return;
+  const line = input.value.trim();
+  if (!line) return;
+  input.value = "";
+  if (history[history.length - 1] !== line) history = history.concat(line).slice(-50);
+  histPos = history.length;
+  store.set("history", history);
+  stick = true;
+  if (line.toLowerCase() === "help") { for (const h of HELP) addLine("local", h); afterAppend(); return; }
+  if (line.toLowerCase() === "clear") { $("term-clear").onclick(); return; }
+  try { await api("/api/console", {command: line}); }
+  catch (err) {  // controller failures (502) already arrive through the log
+    if (err.status !== 502) { addLine("error", err.message); afterAppend(); }
+  }
+  pollLog();
+  loadSettings();  // a LIGHT command moves the slider
+});
+
+let logTimer, logBusy = false, logAgain = false;
+async function pollLog() {
+  if (logBusy) { logAgain = true; return; }  // one request at a time; run again right after
+  logBusy = true;
+  clearTimeout(logTimer);
+  let delay = document.hidden ? 3000 : 700;
+  try {
+    const r = await api("/api/log?since=" + since);
+    if (r.last_id < since) { since = 0; delay = 0; }  // the scanner restarted
+    else {
+      const fresh = r.entries.filter(e => e.id > since);
+      for (const e of fresh) addLine(e.kind, e.text, e.t);
+      if (fresh.length) afterAppend();
+      since = Math.max(since, r.last_id);
+    }
+    setConn(true);
+  } catch (e) {
+    setConn(false);
+    delay = 3000;
+  } finally {
+    logBusy = false;
+  }
+  if (logAgain) { logAgain = false; delay = 0; }
+  logTimer = setTimeout(pollLog, delay);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { pollLog(); poll(); } });
+
+// ---- start ------------------------------------------------------------------
+loadSettings();
+refreshPreview();
+poll();
+setInterval(() => { if (!document.hidden) poll(); }, 1000);
+pollLog();
+</script>
+</body>
+</html>
