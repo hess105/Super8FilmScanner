@@ -35,6 +35,8 @@ EN is active low on the TMC2209. The firmware drives EN high at start (motors of
 
 The Pi talks to the Pico over one USB cable (it appears as `/dev/ttyACM0`). The Pico drives two TMC2209 driver modules and one LED driver channel. A 12 V supply feeds the motor drivers and the LED driver, and a buck converter makes 5 V for the Pi.
 
+Full schematics, pin table and bring-up checks: [wiring](wiring.md).
+
 | From | To | Notes |
 |---|---|---|
 | Pi USB | Pico USB | Serial commands and Pico power |
