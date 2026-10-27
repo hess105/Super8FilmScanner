@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
@@ -61,19 +62,25 @@ class Scanner:
     # persistence -------------------------------------------------------
     def _load_meta(self):
         if self.meta_path.exists():
-            meta = json.loads(self.meta_path.read_text())
-            self.flagged = meta.get("flagged", [])
-            if meta.get("target"):
-                self.target = tuple(meta["target"])
+            try:
+                meta = json.loads(self.meta_path.read_text())
+                flagged = list(meta.get("flagged", []))
+                target = tuple(meta["target"]) if meta.get("target") else None
+            except (ValueError, TypeError, AttributeError, KeyError, OSError):
+                return  # corrupt scan.json: start with defaults
+            self.flagged = flagged
+            self.target = target
 
     def _save_meta(self):
-        self.meta_path.write_text(json.dumps({
+        tmp = self.meta_path.with_name(self.meta_path.name + ".tmp")
+        tmp.write_text(json.dumps({
             "settings": asdict(self.settings),
             "target": list(self.target) if self.target else None,
             "frames": self.frame_number,
             "flagged": self.flagged,
             "state": self.state,
         }, indent=2))
+        os.replace(tmp, self.meta_path)  # atomic: never leaves a half-written scan.json
 
     # scan loop ---------------------------------------------------------
     def _grab(self):
@@ -101,23 +108,35 @@ class Scanner:
         to_wind = nudges = failures = 0
         pool = ThreadPoolExecutor(max_workers=3)
         slots = threading.BoundedSemaphore(PENDING_WRITES)
-        futures = []
+        futures = {}  # write future -> frame number
+        write_errors = []
+
+        def reap(wait=False):
+            for f, n in list(futures.items()):
+                if wait or f.done():
+                    del futures[f]
+                    if f.exception():
+                        if n not in self.flagged:
+                            self.flagged.append(n)
+                        write_errors.append("frame %d write failed: %s: %s" % (n, type(f.exception()).__name__, f.exception()))
+
         try:
             self.controller.set_light(s.light_percent)
             while not self._stop.is_set():
                 if max_frames is not None and self.frame_number - start >= max_frames:
                     break
-                if not self._running.wait(0.1):
+                if not self._running.wait(0.1) or self._stop.is_set():
                     continue
-                for f in [f for f in futures if f.done()]:
-                    f.result()  # surface write errors early
-                    futures.remove(f)
+                reap()
+                if write_errors:
+                    raise ScanError("frame write failed")
 
                 frame, centre = self._detect(self._grab())
                 h, w = frame.shape[:2]
                 if centre is not None:
                     if self.target is None:
                         self.target = (centre[0], h / 2)
+                        self._save_meta()
                     dy = self.target[1] - centre[1]
                     if abs(dy) > s.nudge_tolerance_frac * h:
                         nudges += 1
@@ -133,6 +152,7 @@ class Scanner:
                     if failures >= s.max_consecutive_failures:
                         raise ScanError("sprocket hole lost")
                     self.flagged.append(self.frame_number)  # keep the previous offset for this frame
+                    self._save_meta()
 
                 aligned = postprocess(shift_frame(frame, *self._offset), s)
                 self.preview = cv2.resize(aligned, (PREVIEW_WIDTH, int(PREVIEW_WIDTH * h / w)))
@@ -140,7 +160,7 @@ class Scanner:
                 slots.acquire()
                 fut = pool.submit(self._write, path, aligned)
                 fut.add_done_callback(lambda _f: slots.release())
-                futures.append(fut)
+                futures[fut] = self.frame_number
 
                 self.frame_number += 1
                 to_wind += 1
@@ -149,6 +169,7 @@ class Scanner:
                     self.controller.wind(wind_steps(on_spool, s.frames_per_wind, s), s.wind_rate)
                     on_spool += s.frames_per_wind
                     to_wind -= s.frames_per_wind
+                    self._save_meta()
                 self.controller.advance(s.steps_per_frame, s.advance_rate)
                 if self.on_progress:
                     self.on_progress(self)
@@ -158,12 +179,16 @@ class Scanner:
             self.state = "error"
         finally:
             pool.shutdown(wait=True)
-            for f in futures:
-                if f.exception() and self.state != "error":
-                    self.error = "%s: %s" % (type(f.exception()).__name__, f.exception())
-                    self.state = "error"
+            reap(wait=True)
+            if write_errors:
+                self.error = "; ".join(([self.error] if self.error else []) + write_errors)
+                self.state = "error"
             try:
                 self.controller.set_light(0)
             except Exception:
                 pass  # the controller may be what failed
-            self._save_meta()
+            try:
+                self._save_meta()
+            except Exception as e:
+                self.error = "; ".join(([self.error] if self.error else []) + ["scan.json not saved: %s: %s" % (type(e).__name__, e)])
+                self.state = "error"

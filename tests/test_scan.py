@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 
 import cv2
 import pytest
@@ -88,3 +90,94 @@ def test_stop_before_run_does_nothing(tmp_path):
     sc.run()
     assert sc.frame_number == 0
     assert sc.state == "done"
+
+
+def run_in_thread(sc, **kw):
+    th = threading.Thread(target=sc.run, kwargs=kw)
+    th.start()
+    return th
+
+
+def test_stop_while_paused_moves_nothing(tmp_path):
+    film = FakeFilm()
+    sc = scanner(film, tmp_path)
+    sc.pause()
+    th = run_in_thread(sc)
+    time.sleep(0.2)
+    sc.stop()
+    th.join(5)
+    assert not th.is_alive()
+    assert film.pos == 0 and sc.frame_number == 0
+
+
+def test_pause_then_resume_completes(tmp_path):
+    film = FakeFilm()
+    sc = scanner(film, tmp_path)
+    sc.pause()
+    th = run_in_thread(sc, max_frames=4)
+    time.sleep(0.2)
+    assert sc.frame_number == 0
+    sc.resume()
+    th.join(10)
+    assert not th.is_alive()
+    assert sc.state == "done" and sc.frame_number == 4
+
+
+def test_failed_write_is_flagged_and_reported(tmp_path):
+    sc = scanner(FakeFilm(), tmp_path)
+    real = sc._write
+
+    def write(path, image):
+        if path.name == "frame_00000003.png":
+            raise IOError("disk full")
+        real(path, image)
+
+    sc._write = write
+    sc.run(max_frames=10)
+    assert sc.state == "error"
+    assert 3 in sc.flagged
+    assert "frame 3 write failed" in sc.error and "disk full" in sc.error
+    assert 3 in json.loads((tmp_path / "reel" / "scan.json").read_text())["flagged"]
+
+
+def test_nudge_counter_resets_between_frames(tmp_path):
+    sc = scanner(FakeFilm(), tmp_path, settings(max_nudges=6))
+    sc.run(max_frames=20)
+    assert sc.state == "done", sc.error
+
+
+def test_failure_counter_resets_after_recovery(tmp_path):
+    film = FakeFilm()
+
+    def hook(sc):
+        if sc.frame_number in (1, 3, 5, 7):
+            film.blank_remaining = 1
+
+    sc = scanner(film, tmp_path, settings(retries=0, max_consecutive_failures=2), on_progress=hook)
+    sc.run(max_frames=9)
+    assert sc.state == "done", sc.error
+    assert sc.flagged == [1, 3, 5, 7]
+
+
+def test_error_turns_light_off_and_saves_state(tmp_path):
+    film = FakeFilm()
+    film.blank_remaining = 10 ** 6
+    sc = scanner(film, tmp_path, settings(retries=0, max_consecutive_failures=3))
+    sc.run(max_frames=50)
+    assert film.light == 0
+    assert json.loads((tmp_path / "reel" / "scan.json").read_text())["state"] == "error"
+
+
+def test_meta_saved_during_scan_and_corrupt_meta_tolerated(tmp_path):
+    film = FakeFilm()
+    seen = {}
+
+    def hook(sc):
+        if sc.frame_number == 2:
+            seen.update(json.loads((tmp_path / "reel" / "scan.json").read_text()))
+
+    scanner(film, tmp_path, on_progress=hook).run(max_frames=3)
+    assert seen["target"] is not None  # saved before run() ended
+    (tmp_path / "reel" / "scan.json").write_text('{"target": [1, ')
+    sc = scanner(film, tmp_path)
+    assert sc.target is None and sc.flagged == [] and sc.frame_number == 3
