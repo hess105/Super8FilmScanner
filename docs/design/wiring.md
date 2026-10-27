@@ -9,10 +9,10 @@ Text schematics for the first build on perfboard. A later PCB plan redraws the s
 ```mermaid
 flowchart LR
     PSU[12 V supply] --> FUSE[Fuse]
-    FUSE --> BUCK[Buck converter 12 V to 5 V]
-    FUSE --> DF[TMC2209 film VM]
-    FUSE --> DR[TMC2209 reel VM]
-    FUSE --> LEDDRV[LED driver]
+    FUSE -->|12 V in| BUCK[Buck converter 12 V to 5 V]
+    FUSE -->|12 V to VM| DF[TMC2209 film driver]
+    FUSE -->|12 V to VM| DR[TMC2209 reel driver]
+    FUSE -->|12 V in| LEDDRV[LED driver]
     BUCK -->|5 V| PI[Raspberry Pi]
     PI ---|CSI ribbon| CAM[HQ camera]
     PI ---|USB, power and serial| PICO[Pico]
@@ -134,7 +134,7 @@ Finding the two coil pairs of a NEMA 17 (bipolar, usually four wires):
 
 Swapping the two wires of one coil pair reverses the direction. Do not swap wires between pairs.
 
-**Current setting.** Set the driver's reference voltage for the motor's rated current before connecting the motor. The formula depends on the module's sense resistors and the TMC2209 configuration: use the formula in the TMC2209 datasheet and your module's documentation (VERIFY, not taken from a datasheet here).
+**Current setting.** Set the driver's reference voltage for the motor's rated current with the motor unplugged (step 3 of section 9; the module needs VM and VIO powered to be adjusted). The formula depends on the module's sense resistors and the TMC2209 configuration: use the formula in the TMC2209 datasheet and your module's documentation (VERIFY, not taken from a datasheet here).
 
 ## 6. LED lighting
 
@@ -156,6 +156,7 @@ flowchart LR
 - Choose a driver whose output current matches the LED's rated current. Never exceed the LED's rating.
 - Never drive the LED directly from a GPIO.
 - Warning: if the dimming input needs more than 3.3 V to count as "high", the Pico cannot dim it directly. Check the driver datasheet before connecting GPIO 15.
+- Warning: many constant-current drivers pull their DIM/PWM input up internally to a voltage above 3.3 V, which can push current into GPIO 15. Measure the dimming input's open-circuit voltage before connecting. If it is above 3.3 V, drive it through a transistor or open-collector stage; this inverts the PWM, so the firmware duty would need inverting.
 
 ## 7. Pi connections
 
@@ -175,11 +176,12 @@ Recommendations only.
 
 ## 9. Safety and power-up order
 
-1. Never connect or disconnect a motor while the 12 V is on. Hot-plugging a motor can destroy the driver. (General practice for stepper drivers; also check the TMC2209 datasheet, VERIFY.)
-2. Set Vref for each driver first (section 5).
-3. Power up with both motors disconnected.
-4. Measure the 12 V rail and the 5 V rail with a multimeter and confirm both before connecting the Pi and Pico.
-5. Power down, connect one motor, power up and test. Repeat for the other.
+Never connect or disconnect a motor while the 12 V is on. Hot-plugging a motor can destroy the driver. (General practice for stepper drivers; also check the TMC2209 datasheet, VERIFY.)
+
+1. Power up with no motors, Pi or Pico connected. Measure the 12 V and 5 V rails with a multimeter and confirm both.
+2. Power down. Connect the Pi and the Pico (USB), still with no motors connected.
+3. Power up and set Vref on each driver with its motor unplugged (VM from the 12 V rail, VIO from the Pico 3V3). The adjustment method and measuring point depend on the module: VERIFY against your module's datasheet before powering.
+4. Power down. Connect ONE motor, power up and test it. Repeat for the other motor.
 
 ## 10. Bring-up checks per wire group
 
