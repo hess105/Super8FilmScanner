@@ -44,20 +44,29 @@ def set_light(percent):
     led.duty_u16(percent * 65535 // 100)
 
 
-while True:
-    line = sys.stdin.readline()
-    try:
-        cmd = parse_command(line)
-        if cmd[0] == "ADVANCE":
-            film.move(cmd[1], cmd[2])
-            print(format_ok())
-        elif cmd[0] == "WIND":
-            reel.move(cmd[1], cmd[2])
-            print(format_ok())
-        elif cmd[0] == "LIGHT":
-            set_light(cmd[1])
-            print(format_ok())
-        else:
-            print(format_ok("light=%d" % light))
-    except ProtocolError as e:
-        print(format_err(str(e)))
+try:
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            continue  # EOF: do not parse an empty line
+        try:
+            cmd = parse_command(line)
+            if cmd[0] == "ADVANCE":
+                film.move(cmd[1], cmd[2])
+                print(format_ok())
+            elif cmd[0] == "WIND":
+                reel.move(cmd[1], cmd[2])
+                print(format_ok())
+            elif cmd[0] == "LIGHT":
+                set_light(cmd[1])
+                print(format_ok())
+            else:
+                print(format_ok("light=%d" % light))
+        except ProtocolError as e:
+            print(format_err(str(e)))
+        except Exception:
+            print(format_err("internal"))
+finally:  # leaving the loop (e.g. Ctrl-C, reflash) must not leave the LED lit or the drivers enabled
+    led.duty_u16(0)
+    film.en.value(1)
+    reel.en.value(1)
