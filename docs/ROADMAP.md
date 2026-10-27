@@ -16,7 +16,7 @@ Not run on hardware yet:
 | Phase | Weeks | Goal | Done when |
 |---|---|---|---|
 | 0. Software and firmware | done | App and firmware written and tested on a PC | tests pass on the branch |
-| 1. Bench bring-up | 1-2 | Order parts (about $330-365 without the SSD; [bill of materials](design/bom.md)). Flash the Pico on perfboard with 2 TMC2209 modules, drive both motors and the LED. Set up Pi OS, run the camera check, start the web app. Wiring: [wiring](design/wiring.md) | web UI shows a live preview, light slider works, "Test frame" finds the sprocket on a loose piece of film |
+| 1. Bench bring-up | 1-2 | Order parts (about $330-365 without the SSD; [bill of materials](design/bom.md)). Flash the Pico on perfboard with 2 TMC2209 modules, drive both motors and the LED. Set up Pi OS, run the camera check, start the web app. Wiring: [wiring](design/wiring.md) | web UI shows a live preview, light slider works (after the RCD-24 PWM firmware item), "Test frame" finds the sprocket on a loose piece of film |
 | 2. Mechanics | 2-5 | Update the FreeCAD parts for the new film path, gate, camera mount and reel mounts; print and iterate | film advances one frame cleanly through the gate without scratching |
 | 3. Image quality | 4-6 | Lens focus and zoom, diffuser and LED, exposure, white balance; try an enlarger lens if the microscope lens is soft | frames are sharp across the whole picture and evenly lit |
 | 4. First full reel | 6-7 | Calibrate `steps_per_frame` and spool winding; scan a 3-minute reel | 3,000+ aligned frames and a playable MP4 with few or no flagged frames |
@@ -113,6 +113,7 @@ Process note: commit trailers name the model that wrote each commit (Haiku 5.5 o
 - Lens: source a new (not used) lens; the microscope lens may be discontinued.
 - Certification: CE/FCC.
 - Security: the web UI has no login.
+- [ ] Check Host/Origin (configurable allowlist) before exposing the app beyond a trusted LAN (no CORS means JSON routes are safe from other web pages, but routes without a body such as stop/pause/resume/test-frame can be triggered by a form post, and there is no Host check against DNS rebinding).
 - Price and support plan.
 
 ## 6. Open questions

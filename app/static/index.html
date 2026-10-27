@@ -492,7 +492,7 @@ setCollapsed(store.get("termCollapsed", false) === true);
 const HELP = [
   "ADVANCE steps [rate]   move the film; negative steps go back",
   "WIND steps [rate]      turn the take-up spool",
-  "LIGHT percent          set the light, 0 to 100",
+  "LIGHT percent          set the light, 0 to 100 (RCD-24 driver: 0 is full on until the firmware PWM item lands, see wiring.md section 6)",
   "STATUS                 ask the controller for its status",
   "help, clear            this list; clear the view",
 ];

@@ -16,7 +16,7 @@ On Raspberry Pi OS (Bookworm):
     python3 -m venv --system-site-packages .venv && .venv/bin/pip install -r requirements.txt
     .venv/bin/python -m app --config scanner.json
 
-Open `http://<pi-hostname>.local:8000`. There is no login, so only run it on a network you trust.
+Open `http://<pi-hostname>.local:8000`. There is no login, so only run it on a network you trust: anyone on the network can move the motors and the light from the page or the console whenever no scan is running. Console moves are capped (20,000 steps and 15 s per move), and a move cannot be stopped from the app.
 Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `scan.json`. The device does not make a video: see "Encoding on a desktop" below.
 
 A 50 ft reel is about 3,600 frames of about 20 MB PNGs, so roughly 70-80 GB: check free disk space before a scan.
@@ -29,7 +29,7 @@ The Pi only collects frames. Copy `scans/<name>/` to a desktop and encode it the
 
     python tools/encode_reel.py scans/<name>
 
-This writes `scans/<name>/reel.mp4` (H.264, 18 fps). It needs only Python 3 and ffmpeg. With `--encoder auto` (the default) it uses the first hardware encoder your ffmpeg offers (nvenc, videotoolbox, qsv, amf, vaapi) and falls back to the CPU encoder if that one fails to start; it prints which one made the file. Useful options:
+This writes `scans/<name>/reel.mp4` (H.264, 18 fps). It needs only Python 3 and ffmpeg. With `--encoder auto` (the default) it uses the first hardware encoder your ffmpeg offers (nvenc, videotoolbox, qsv, amf, vaapi) and, if that one fails to start, tries the next available hardware encoder and then the CPU encoder; it prints which one made the file. Useful options:
 
 - `--encoder cpu|nvenc|videotoolbox|qsv|amf|vaapi` to force one (no fallback), `--codec hevc` for H.265, `--height 1080` for a smaller copy, `--output PATH`, `--fps N` (integer). Encoding goes to `reel.part.mp4` first and replaces `reel.mp4` only on success, so a failed run keeps an earlier file.
 - `--quality N`: one number whose meaning depends on the encoder. `cpu`: CRF, lower is better, default 15. `nvenc`, `qsv`, `amf`, `vaapi`: quantizer, lower is better (defaults 19, 20, 18, 20). `videotoolbox`: 0-100, higher is better (default 65).

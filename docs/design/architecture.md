@@ -57,7 +57,7 @@ Web routes: `GET /`, `GET /api/status`, `GET /api/settings`, `POST /api/scan/sta
 
 One `CommandLog` (last 500 entries in memory, lost on restart) collects: every controller command (`cmd`) before it is written, every good reply (`reply`), every controller failure (`error`, just before `ControllerError` is raised), scan events (`event`: start, target set, each nudge, flagged frames, winds, pause, resume, stop, done or error; nothing per good frame) and UI actions (`event`: light, exposure, test frame). Each entry is `{"id", "t", "kind", "text"}`; ids start at 1 and keep counting when old entries drop. `GET /api/log?since=N` returns `{"entries": [...], "last_id": n}` with only entries newer than `N`; the page polls it every 0.7 s (3 s when the tab is hidden). No route clears the log; the page's Clear hides lines in that browser only.
 
-`POST /api/console` with `{"command": "..."}` (1-40 characters) sends one line to the controller and returns `{"reply": "<text after OK>"}`. Only `ADVANCE`, `WIND`, `LIGHT` and `STATUS` are accepted (case-insensitive, printable ASCII, no newline); anything else is HTTP 400 `unknown command`. It is refused with 409 while a scan runs, and a controller failure is 502 (its text is already in the log).
+`POST /api/console` with `{"command": "..."}` (1-40 characters) sends one line to the controller and returns `{"reply": "<text after OK>"}`. Only `ADVANCE`, `WIND`, `LIGHT` and `STATUS` are accepted (case-insensitive, printable ASCII, no newline); anything else is HTTP 400 `unknown command`. `ADVANCE` and `WIND` take integer steps (at most 20,000) and a rate of 1-4000 (default 2000 or 1500), and a move may last at most 15 s (steps / rate); `LIGHT` takes one integer 0-100 and `STATUS` none. Anything else is HTTP 400. A move cannot be stopped from the app: the firmware blocks until it ends. It is refused with 409 while a scan runs, and a controller failure is 502 (its text is already in the log).
 
 ## 3. Controller protocol
 
@@ -156,7 +156,7 @@ Settings are read from the JSON file at start. The web UI changes light and expo
 | Situation | What happens |
 |---|---|
 | Sprocket not found | Recapture up to `retries` times. If still missing, the frame is saved with the previous offset, its number is added to `flagged` in `scan.json`, and the scan continues. |
-| Sprocket lost | `max_consecutive_failures` (5) frames in a row without a hole raises `ScanError: sprocket hole lost`. State becomes `error`, the light is turned off. |
+| Sprocket lost | `max_consecutive_failures` (5) frames in a row without a hole raises `ScanError: sprocket hole lost`. State becomes `error`, the light is turned off (see the RCD-24 caveat below). |
 | Too many nudges | More than `max_nudges` (25) nudges for one frame raises `ScanError`. State `error`. |
 | Controller silent or `ERR` | `ControllerError` ("no reply ... (timeout)" after `serial_timeout_s`, or the `ERR` text, or an unexpected reply). Caught by the loop: state `error`, message in `status`. Frames already written stay on disk and the reel can be continued by starting with the same name. |
 | Write failure | The failed frame number is flagged. The loop notices on the next pass (or at the end), raises "frame write failed", and the error text lists each failure. |
