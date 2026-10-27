@@ -114,6 +114,7 @@ class ScanRunner:
 
     def _test_frame(self):
         self._require_idle()
+        self.controller.set_light(self.settings.light_percent)  # a finished scan leaves it off
         frame = self._grab()
         centre = detect_sprocket(frame, self.settings)
         shown = frame.copy()

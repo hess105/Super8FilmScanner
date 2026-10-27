@@ -18,6 +18,7 @@ On Raspberry Pi OS (Bookworm):
 
 Open `http://<pi-hostname>.local:8000`. There is no login, so only run it on a network you trust.
 Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `reel.mp4` and `scan.json`.
+A 50 ft reel is about 3,600 frames of about 20 MB PNGs, so roughly 70-80 GB: check free disk space before a scan.
 Hardware numbers (steps per frame, motor rates, sprocket threshold) live in `scanner.json`; see `app/config.py` for every setting and its default.
 
 Design notes: [architecture](docs/design/architecture.md), [hardware](docs/design/hardware.md), [wiring](docs/design/wiring.md), [datasheets](docs/datasheets/README.md). Project plan and next steps: [roadmap](docs/ROADMAP.md).

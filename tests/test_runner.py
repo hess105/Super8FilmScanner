@@ -231,3 +231,12 @@ def test_shutdown_stops_scan_and_saves_state(tmp_path):
     assert not runner._thread.is_alive()
     meta = json.loads((tmp_path / "reel1" / "scan.json").read_text())
     assert meta["state"] == "done"
+
+
+def test_test_frame_after_scan_turns_light_back_on(tmp_path):
+    film, runner, _ = make_runner(tmp_path)
+    runner.start("reel1", max_frames=2)
+    wait_for(runner, {"done"})
+    assert film.light == 0
+    assert runner.test_frame()["detected"] is True
+    assert film.light == runner.settings.light_percent
