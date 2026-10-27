@@ -12,6 +12,7 @@ from app.scan import Scanner, next_frame_number
 
 
 def settings(**kw):
+    kw.setdefault("light_control", True)
     return Settings(flip_vertical=False, **kw)
 
 
@@ -225,3 +226,13 @@ def test_events_for_pause_resume_stop_and_error(tmp_path):
     sc = scanner(FakeFilm(), tmp_path, settings(max_nudges=2), on_event=events.append)
     sc.run(max_frames=5)
     assert events[-1].startswith("error: ") and "nudges" in events[-1]
+
+
+def test_fixed_light_never_touches_the_light(tmp_path):
+    film = FakeFilm()
+    events = []
+    sc = scanner(film, tmp_path, settings(light_control=False), on_event=events.append)
+    sc.run(max_frames=3)
+    assert sc.state == "done"
+    assert film.light is None
+    assert not any("light" in e.lower() for e in events)

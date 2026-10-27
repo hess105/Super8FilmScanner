@@ -33,6 +33,7 @@ class Settings:
     gain: float = 1.0
     flip_vertical: bool = True
     light_percent: int = 100
+    light_control: bool = False  # True only with a dimmable LED and matching firmware
     # sprocket detection
     sprocket_strip_frac: float = 0.16
     sprocket_threshold: int = 230

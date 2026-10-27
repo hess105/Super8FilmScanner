@@ -129,7 +129,8 @@ class Scanner:
 
         self.on_event("scan started at frame %d" % start)
         try:
-            self.controller.set_light(s.light_percent)
+            if s.light_control:
+                self.controller.set_light(s.light_percent)
             while not self._stop.is_set():
                 if max_frames is not None and self.frame_number - start >= max_frames:
                     break
@@ -199,7 +200,8 @@ class Scanner:
                 self.error = "; ".join(([self.error] if self.error else []) + write_errors)
                 self.state = "error"
             try:
-                self.controller.set_light(0)
+                if s.light_control:
+                    self.controller.set_light(0)
             except Exception:
                 pass  # the controller may be what failed
             try:

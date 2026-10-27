@@ -19,7 +19,8 @@ def main():
     settings = Settings.load(args.config)
     log = CommandLog()
     controller = Controller.open(settings, on_traffic=log.add)
-    controller.set_light(settings.light_percent)
+    if settings.light_control:
+        controller.set_light(settings.light_percent)
     camera = Picamera2Camera(settings)
     camera.lock_white_balance()  # with the scanner light on and empty gate
     runner = ScanRunner(controller, camera, settings, log=log)
@@ -28,7 +29,8 @@ def main():
     finally:  # the scan thread is a daemon: finish its writes and scan.json before exiting
         runner.shutdown()
         try:
-            controller.set_light(0)
+            if settings.light_control:
+                controller.set_light(0)
         except ControllerError:
             pass
         controller.close()

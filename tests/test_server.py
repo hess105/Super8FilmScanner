@@ -12,7 +12,7 @@ from app.server import create_app
 def make_client(tmp_path):
     film = FakeFilm()
     film.set_exposure = lambda us, gain: None
-    settings = Settings(flip_vertical=False, output_dir=str(tmp_path))
+    settings = Settings(flip_vertical=False, light_control=True, output_dir=str(tmp_path))
     runner = ScanRunner(film, film, settings)
     return TestClient(create_app(runner)), film
 
@@ -56,10 +56,10 @@ def test_start_stop_and_errors(tmp_path):
 def test_settings_route(tmp_path):
     client, _ = make_client(tmp_path)
     s = client.get("/api/settings").json()
-    assert s == {"light_percent": 100, "exposure_us": 2000, "gain": 1.0}
+    assert s == {"light_percent": 100, "exposure_us": 2000, "gain": 1.0, "light_control": True}
     client.post("/api/light", json={"percent": 40})
     client.post("/api/exposure", json={"exposure_us": 3000, "gain": 2.5})
-    assert client.get("/api/settings").json() == {"light_percent": 40, "exposure_us": 3000, "gain": 2.5}
+    assert client.get("/api/settings").json() == {"light_percent": 40, "exposure_us": 3000, "gain": 2.5, "light_control": True}
 
 
 def test_bounds_and_missing_fields(tmp_path):
@@ -86,7 +86,7 @@ def test_hardware_routes_409_while_scanning(tmp_path):
 
     film.set_light = gated_light
     film.set_exposure = lambda us, gain: None
-    settings = Settings(flip_vertical=False, output_dir=str(tmp_path))
+    settings = Settings(flip_vertical=False, light_control=True, output_dir=str(tmp_path))
     client = TestClient(create_app(ScanRunner(film, film, settings)))
     try:
         assert client.post("/api/scan/start", json={"name": "reel1"}).status_code == 200
@@ -142,7 +142,7 @@ def test_console_route_409_while_scanning(tmp_path):
         orig(percent)
 
     film.set_light = gated_light
-    client = TestClient(create_app(ScanRunner(film, film, Settings(flip_vertical=False, output_dir=str(tmp_path)))))
+    client = TestClient(create_app(ScanRunner(film, film, Settings(flip_vertical=False, light_control=True, output_dir=str(tmp_path)))))
     try:
         assert client.post("/api/scan/start", json={"name": "reel1"}).status_code == 200
         assert client.post("/api/console", json={"command": "STATUS"}).status_code == 409
@@ -169,3 +169,17 @@ def test_controller_error_on_light_is_502(tmp_path):
     film.set_light = boom
     r = client.post("/api/light", json={"percent": 40})
     assert r.status_code == 502 and "no reply" in r.json()["detail"]
+
+
+def test_fixed_light_routes(tmp_path):
+    film = FakeFilm()
+    client = TestClient(create_app(ScanRunner(film, film, Settings(flip_vertical=False, output_dir=str(tmp_path)))))
+    assert client.get("/api/settings").json()["light_control"] is False
+    assert client.post("/api/light", json={"percent": 40}).status_code == 400
+    assert client.post("/api/console", json={"command": "LIGHT 30"}).status_code == 400
+    assert film.light is None
+
+
+def test_light_control_enabled_in_settings(tmp_path):
+    client, _ = make_client(tmp_path)
+    assert client.get("/api/settings").json()["light_control"] is True
