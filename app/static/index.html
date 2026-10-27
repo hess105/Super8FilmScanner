@@ -89,6 +89,7 @@
   .card h2 { font-size: 1rem; font-weight: 650; margin: 0 0 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .card h2 small { font-size: 0.8rem; font-weight: 500; color: var(--muted); }
   .field { display: grid; gap: 6px; margin-bottom: 12px; }
+  .field[hidden] { display: none; }
   .field label, .label { font-size: 0.85rem; color: var(--muted); }
   .row { display: flex; gap: 8px; flex-wrap: wrap; }
   .row > * { flex: 1 1 0; min-width: 0; }
@@ -204,12 +205,12 @@
     </section>
 
     <section class="card" aria-labelledby="h-cam">
-      <h2 id="h-cam">Camera and light</h2>
+      <h2 id="h-cam">Camera</h2>
       <p id="cam-lock" class="lock" hidden>
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h1v8H3V7h1zm2 0h4V5a2 2 0 1 0-4 0v2z"/></svg>
         Locked while scanning
       </p>
-      <div class="field">
+      <div class="field" id="light-field" hidden>
         <label for="light">Light</label>
         <div class="slider"><input id="light" type="range" min="0" max="100" value="100"><output id="light-v" for="light">100%</output></div>
       </div>
@@ -382,9 +383,13 @@ function placeTarget() {
 new ResizeObserver(placeTarget).observe($("gate"));
 
 // ---- controls ---------------------------------------------------------------
+let lightControl = false;  // from /api/settings; false means a fixed LED
 async function loadSettings() {
   try {
     const c = await api("/api/settings");
+    lightControl = !!c.light_control;
+    $("light-field").hidden = !lightControl;
+    $("h-cam").textContent = lightControl ? "Camera and light" : "Camera";
     $("light").value = c.light_percent; $("light-v").textContent = c.light_percent + "%";
     $("exp").value = c.exposure_us; $("gain").value = c.gain;
   } catch (e) {}
@@ -492,10 +497,11 @@ setCollapsed(store.get("termCollapsed", false) === true);
 const HELP = [
   "ADVANCE steps [rate]   move the film; negative steps go back",
   "WIND steps [rate]      turn the take-up spool",
-  "LIGHT percent          set the light, 0 to 100 (RCD-24 driver: 0 is full on until the firmware PWM item lands, see wiring.md section 6)",
   "STATUS                 ask the controller for its status",
   "help, clear            this list; clear the view",
 ];
+const HELP_LIGHT = "LIGHT percent          set the light, 0 to 100 (RCD-24 driver: 0 is full on until the firmware PWM item lands, see wiring.md section 6)";
+const HELP_FIXED = "light control is off (fixed LED), see README";
 $("term-input").addEventListener("keydown", async e => {
   const input = e.target;
   if (e.key === "ArrowUp" || e.key === "ArrowDown") {
@@ -513,7 +519,8 @@ $("term-input").addEventListener("keydown", async e => {
   histPos = history.length;
   store.set("history", history);
   stick = true;
-  if (line.toLowerCase() === "help") { for (const h of HELP) addLine("local", h); afterAppend(); return; }
+  if (line.toLowerCase() === "help") { const help = lightControl ? HELP.slice(0, 2).concat(HELP_LIGHT, HELP.slice(2)) : HELP.concat(HELP_FIXED);
+    for (const h of help) addLine("local", h); afterAppend(); return; }
   if (line.toLowerCase() === "clear") { $("term-clear").onclick(); return; }
   try { await api("/api/console", {command: line}); }
   catch (err) {  // controller failures (502) already arrive through the log

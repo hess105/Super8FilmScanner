@@ -146,7 +146,8 @@ class ScanRunner:
 
     def _test_frame(self):
         self._require_idle()
-        self.controller.set_light(self.settings.light_percent)  # a finished scan leaves it off
+        if self.settings.light_control:
+            self.controller.set_light(self.settings.light_percent)  # a finished scan leaves it off
         frame = self._grab()
         centre = detect_sprocket(frame, self.settings)
         shown = frame.copy()
@@ -159,8 +160,13 @@ class ScanRunner:
         self._event("test frame: hole at %d, %d" % (round(centre[0]), round(centre[1])))
         return {"detected": True, "x": centre[0], "y": centre[1]}
 
+    def _require_light_control(self):
+        if not self.settings.light_control:
+            raise RunnerError("light control is disabled", 400)
+
     def set_light(self, percent):
         with self._lock:
+            self._require_light_control()
             self._require_idle()
             self.controller.set_light(percent)
             self.settings.light_percent = percent
@@ -182,6 +188,8 @@ class ScanRunner:
     def console(self, command):
         with self._lock:
             self._require_idle()
+            if command.split()[:1] and command.split()[0].upper() == "LIGHT":
+                self._require_light_control()
             try:
                 reply = self.controller.command(command)
             except ValueError as e:

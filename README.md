@@ -16,11 +16,13 @@ On Raspberry Pi OS (Bookworm):
     python3 -m venv --system-site-packages .venv && .venv/bin/pip install -r requirements.txt
     .venv/bin/python -m app --config scanner.json
 
-Open `http://<pi-hostname>.local:8000`. There is no login, so only run it on a network you trust: anyone on the network can move the motors and the light from the page or the console whenever no scan is running. Console moves are capped (20,000 steps and 15 s per move), and a move cannot be stopped from the app.
+Open `http://<pi-hostname>.local:8000`. There is no login, so only run it on a network you trust: anyone on the network can move the motors (and the light, if `light_control` is on) from the page or the console whenever no scan is running. Console moves are capped (20,000 steps and 15 s per move), and a move cannot be stopped from the app.
 Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `scan.json`. The device does not make a video: see "Encoding on a desktop" below.
 
 A 50 ft reel is about 3,600 frames of about 20 MB PNGs, so roughly 70-80 GB: check free disk space before a scan.
-The page shows the live gate with the target row, scan controls, camera and light settings, flagged frames, and a terminal at the bottom. The terminal lists every command sent to the controller (`→`), its reply (`←`), scan events such as nudges and winds (`●`) and errors (`✗`), and lets you type `ADVANCE`, `WIND`, `LIGHT` or `STATUS` yourself while no scan is running (type `help` for the arguments). It keeps the last 500 entries in memory; Clear only clears your view.
+The page shows the live gate with the target row, scan controls, camera settings (and the light slider when `light_control` is on), flagged frames, and a terminal at the bottom. The terminal lists every command sent to the controller (`→`), its reply (`←`), scan events such as nudges and winds (`●`) and errors (`✗`), and lets you type `ADVANCE`, `WIND`, `LIGHT` or `STATUS` yourself while no scan is running (type `help` for the arguments). It keeps the last 500 entries in memory; Clear only clears your view.
+Light: by default the app treats the LED as fixed brightness (`"light_control": false` in `scanner.json`). It never sends `LIGHT`, the page hides the light slider, `LIGHT` console commands are refused with HTTP 400, and the test frame leaves the light alone: the LED is simply on whenever it is powered, so it stays lit after a scan and must be switched off at its supply. Power the LED before starting the app: the white balance is locked at launch, and with the default the app does not turn the light on first (this also applies to a dimmable LED while `light_control` stays false). For a dimmable LED with a matching firmware PWM output, set `"light_control": true`: the app then sets the light at start-up and at the start of a scan, turns it off when a scan ends or fails and when the app exits, and shows the slider.
+
 Hardware numbers (steps per frame, motor rates, sprocket threshold) live in `scanner.json`; see `app/config.py` for every setting and its default.
 
 ## Encoding on a desktop

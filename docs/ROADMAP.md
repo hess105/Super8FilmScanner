@@ -16,7 +16,7 @@ Not run on hardware yet:
 | Phase | Weeks | Goal | Done when |
 |---|---|---|---|
 | 0. Software and firmware | done | App and firmware written and tested on a PC | tests pass on the branch |
-| 1. Bench bring-up | 1-2 | Order parts (about $330-365 without the SSD; [bill of materials](design/bom.md)). Flash the Pico on perfboard with 2 TMC2209 modules, drive both motors and the LED. Set up Pi OS, run the camera check, start the web app. Wiring: [wiring](design/wiring.md) | web UI shows a live preview, light slider works (after the RCD-24 PWM firmware item), "Test frame" finds the sprocket on a loose piece of film |
+| 1. Bench bring-up | 1-2 | Order parts (about $259-290 without storage; [bill of materials](design/bom.md) v4). Flash the Pico on perfboard with 2 Adafruit TMC2209 modules, drive both motors and light the fixed LED. Set up Pi OS, run the camera check, start the web app. Wiring: [wiring](design/wiring.md) | web UI shows a live preview, the fixed LED lights and stays within its case-temperature limit, "Test frame" finds the sprocket on a loose piece of film |
 | 2. Mechanics | 2-5 | Update the FreeCAD parts for the new film path, gate, camera mount and reel mounts; print and iterate | film advances one frame cleanly through the gate without scratching |
 | 3. Image quality | 4-6 | Lens focus and zoom, diffuser and LED, exposure, white balance; try an enlarger lens if the microscope lens is soft | frames are sharp across the whole picture and evenly lit |
 | 4. First full reel | 6-7 | Calibrate `steps_per_frame` and spool winding; scan a 3-minute reel | 3,000+ aligned frames and a playable MP4 with few or no flagged frames |
@@ -27,16 +27,18 @@ These durations are estimates for one person working about 8-10 hours a week, an
 
 ## 3. To bring up what exists
 
-- [ ] Order the parts (see `docs/design/hardware.md` and [bill of materials](design/bom.md), about $330-365 without the SSD, or about $290-335 with the budget swap; SSD extra). Confirm first on DigiKey:
-  - [ ] LED ordering code: CXA1304-0000-000C0UA450H (9 V class, CRI 90 minimum), not the 18 V code CXA1304-0000-000F0HB40E3.
-  - [ ] The 2 GB Pi 4 part number and price (SC0193(11) per the BOM).
-  - [ ] Murata OKX-T/5-D12P-C trim resistor value and the 38-week lead time (or take the Pololu D24V50F5 alternative).
-  - [ ] RECOM RCD-24-0.70: dimming range (see the firmware item below), lead time and whether a newer datasheet than REV 1/2016 exists.
-  - [ ] TE LUMAWISE part number for CXA13, and the heat sink mounting.
-  - [ ] Fuse rating (BOM suggests 6.3 A, 5 x 20 mm) and lead times of the official TMC2209 modules and the 12 V adapter.
+- [ ] Order the parts (v4 lean list: [bill of materials](design/bom.md) and `docs/design/hardware.md`, about $259-290 without storage, about $272-310 with the DigiKey 24 V adapter; storage extra). DigiKey part numbers and stock come from search listings: **availability check on the day** for each DigiKey part, i.e. open the page, confirm the quantity available is at least what you need and read the lead time; if not, use the named alternative.
+  - [ ] DigiKey: Pico SC0915 (1). Alternative: a Pi reseller.
+  - [ ] DigiKey: LED CXA1304-0000-000C0UA450H (1; no own page found; confirm the 9 V class, 90 CRI minimum and CCT, not the 18 V code CXA1304-0000-000F0HB40E3). Alternative: the sibling codes in `bom.md` after checking the order-code table.
+  - [ ] DigiKey: Mean Well LDD-350L 1866-3109-ND (1; one page shows a 12-week lead time). Alternatives: LDD-350LW, LDD-350LS (different pins), or LDD-700L (more heat).
+  - [ ] DigiKey: T-Global TGH-0400-03 heat sink (1; stock and 15-week lead text contradict). Alternative: TGH-0300-03. Its thermal resistance is unread: do the case-temperature check in `docs/design/wiring.md` section 6.
+  - [ ] DigiKey: Littelfuse 03455LS1H fuse holder (1) and a 2.5-3.15 A slow-blow 5 x 20 mm fuse (rating VERIFY).
+  - [ ] DigiKey: Rubycon 35YXJ100MT16.3X11 capacitors (3: two plus one spare; or a 50 V 100 uF part, stock not searched).
+  - [ ] Adafruit TMC2209 breakout, product 6121 (2): check DigiKey (a listed reseller) first; if no stock, buy from Adafruit.
+  - [ ] Not DigiKey: Pi 4 2 GB (compare DigiKey SC0193(11) with a reseller), HQ camera, lens, motors, generic UL-listed 24 V 2 A 5.5 x 2.1 mm centre-positive adapter (DigiKey alternative: Bel SDI50-24-UC-P5), Pi USB-C 5.1 V 3 A supply, diffuser, a storage drive.
 - [ ] Set up Pi OS Bookworm and install per the README.
 - [ ] Flash the Pico: `pip install mpremote`, then `mpremote cp firmware/protocol.py firmware/motion.py firmware/pins.py :`, `mpremote cp firmware/main.py :main.py`, `mpremote reset`.
-- [ ] Check serial replies (`STATUS`, `LIGHT 30`, `STATUS`, `ADVANCE 164`, `WIND 100`, `FOO`). Expected: `OK light=0`, `OK`, `OK light=30`, `OK`, `OK`, `ERR unknown command`. The LED dims with `LIGHT` only after the RCD-24 PWM firmware item below is done: with the current firmware and the RCD-24, `LIGHT 0` is full on (`docs/design/wiring.md` section 9 step 5).
+- [ ] Check serial replies (`STATUS`, `LIGHT 30`, `STATUS`, `ADVANCE 164`, `WIND 100`, `FOO`). Expected: `OK light=0`, `OK`, `OK light=30`, `OK`, `OK`, `ERR unknown command`. The LED is fixed brightness in the v4 build (dimming pin open, GPIO 15 unused), so `LIGHT` has no visible effect (`docs/design/wiring.md` sections 6 and 9).
 - [ ] Check the camera captures a full-resolution frame.
 - [ ] Run `python -m app --config scanner.json`.
 - [ ] First "Test frame": the sprocket hole is found.
@@ -49,7 +51,7 @@ These durations are estimates for one person working about 8-10 hours a week, an
 Deferred review findings, none blocking. Each is a checkbox: file, one-line fix.
 
 ### Firmware (check on the real Pico)
-- [ ] `firmware/main.py`: LED PWM is 20 kHz and active high, but the RECOM RCD-24-0.70 PWM/ON/OFF pin is active low and rated 200 Hz (linear) to 1000 Hz (limit) per its datasheet REV 1/2016 (see `docs/design/wiring.md` section 6). Decide: lower frequency with inverted duty, an RC-filtered PWM into the analogue dimming pin, or a fixed current. Separate task; update wiring.md and `tests` with the change. Confirm on the bench first.
+- [ ] `firmware/main.py` (optional, only if you later want a dimmable LED): the LED PWM is 20 kHz and active high on GPIO 15. The v4 build does not connect it. A Mean Well LDD-L dims at 100 Hz-1 kHz and needs more than 3.5 V for ON (LDD-L-SPEC page 1), so a lower frequency and a level stage would be needed. The earlier RECOM RCD-24 finding (active low, 200 Hz linear / 1 kHz maximum) is the same class of issue (`docs/design/wiring.md` section 6).
 - [ ] `firmware/main.py`: no wait after EN goes low before the first step; add `time.sleep_ms(2)`.
 - [ ] `firmware/main.py`: per-step interpreter overhead limits the top step rate; measure, and move to PIO if needed.
 - [ ] `firmware/main.py`: exceptions other than `ProtocolError` end the loop; catch and reply `ERR`.

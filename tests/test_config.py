@@ -21,3 +21,10 @@ def test_round_trip_and_unknown_keys(tmp_path):
     loaded = Settings.load(path)
     assert loaded == s
     assert loaded.resize_to == (3840, 2160)
+
+
+def test_light_control_defaults_off_and_old_files_load(tmp_path):
+    assert Settings().light_control is False
+    path = tmp_path / "old.json"
+    path.write_text('{"steps_per_frame": 170}')
+    assert Settings.load(path).light_control is False

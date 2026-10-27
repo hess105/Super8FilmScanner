@@ -13,7 +13,7 @@ from app.runner import RunnerError, ScanRunner
 def make_runner(tmp_path):
     film = FakeFilm()
     film.set_exposure = lambda us, gain: setattr(film, "exposure", (us, gain))
-    settings = Settings(flip_vertical=False, output_dir=str(tmp_path))
+    settings = Settings(flip_vertical=False, light_control=True, output_dir=str(tmp_path))
     return film, ScanRunner(film, film, settings)
 
 
@@ -100,7 +100,7 @@ class GatedFilm(FakeFilm):
 
 def gated_runner(tmp_path, **kw):
     film = GatedFilm()
-    settings = Settings(flip_vertical=False, output_dir=str(tmp_path))
+    settings = Settings(flip_vertical=False, light_control=True, output_dir=str(tmp_path))
     return film, ScanRunner(film, film, settings, **kw)
 
 
@@ -160,7 +160,7 @@ class SlowOffFilm(FakeFilm):
 
 def test_finishing_state_and_never_done_while_thread_alive(tmp_path):
     film = SlowOffFilm()
-    runner = ScanRunner(film, film, Settings(flip_vertical=False, output_dir=str(tmp_path)))
+    runner = ScanRunner(film, film, Settings(flip_vertical=False, light_control=True, output_dir=str(tmp_path)))
     runner.start("reel1", max_frames=2)
     wait_for(runner, {"finishing"})
     for _ in range(50):
@@ -207,7 +207,7 @@ def test_pause_and_resume_ignored_when_not_scanning(tmp_path):
 
 def test_scanner_pause_before_run_sticks(tmp_path):
     film = FakeFilm()
-    scanner = Scanner(film, film, Settings(flip_vertical=False, output_dir=str(tmp_path)), tmp_path / "r")
+    scanner = Scanner(film, film, Settings(flip_vertical=False, light_control=True, output_dir=str(tmp_path)), tmp_path / "r")
     scanner.pause()
     t = threading.Thread(target=scanner.run, args=(1,), daemon=True)
     t.start()
@@ -280,7 +280,7 @@ def test_console_returns_reply_and_logs_traffic(tmp_path):
 
     log = CommandLog()
     controller = Controller(FakePort(["OK light=100"]), on_traffic=log.add)
-    runner = ScanRunner(controller, FakeFilm(), Settings(flip_vertical=False, output_dir=str(tmp_path)), log=log)
+    runner = ScanRunner(controller, FakeFilm(), Settings(flip_vertical=False, light_control=True, output_dir=str(tmp_path)), log=log)
     assert runner.log is log
     assert runner.console("status") == {"reply": "light=100"}
     assert kinds_texts(runner) == [("cmd", "STATUS"), ("reply", "OK light=100")]
@@ -369,3 +369,26 @@ def test_console_light_updates_settings(tmp_path):
     assert runner.settings.light_percent == 30
     runner.console("status")
     assert runner.settings.light_percent == 30
+
+
+def fixed_light_runner(tmp_path):
+    film = FakeFilm()
+    return film, ScanRunner(film, film, Settings(flip_vertical=False, output_dir=str(tmp_path)))
+
+
+def test_fixed_light_refuses_light_commands(tmp_path):
+    film, runner = fixed_light_runner(tmp_path)
+    with pytest.raises(RunnerError) as e:
+        runner.set_light(30)
+    assert (e.value.status, str(e.value)) == (400, "light control is disabled")
+    with pytest.raises(RunnerError) as e:
+        runner.console("LIGHT 30")
+    assert e.value.status == 400
+    assert runner.console("STATUS") == {"reply": "light=100"}
+    assert film.light is None
+
+
+def test_fixed_light_test_frame_leaves_light_alone(tmp_path):
+    film, runner = fixed_light_runner(tmp_path)
+    assert runner.test_frame()["detected"] is True
+    assert film.light is None

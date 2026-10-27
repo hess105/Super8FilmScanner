@@ -25,7 +25,7 @@ This describes the code as committed on `feature/scanner-refinement`. The design
   film stepper      take-up stepper
 ```
 
-The LED driver link carries 20 kHz PWM in the current firmware. Caveat: with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6.
+The LED driver link carries 20 kHz PWM in the current firmware, but the app uses it only when `light_control` is true and the LED driver supports PWM dimming. With the default (`light_control` false) the LED is simply on whenever it is powered: the app does not control it and never switches it off. Caveat (when `light_control` is true): with a PWM-dimmable driver such as the RCD-24 (not the lean build's driver), `LIGHT 0` can be full on; see `wiring.md` section 6.
 
 The Pi never drives motors or the LED directly. It sends one text command per line and waits for the reply (`OK` or `ERR ...`) before sending the next.
 
@@ -33,7 +33,7 @@ The Pi never drives motors or the LED directly. It sends one text command per li
 
 | Module | Responsibility | Depends on |
 |---|---|---|
-| `app/__main__.py` | Entrypoint: load settings, create the `CommandLog`, open controller (traffic goes to the log) and camera, lock white balance, start uvicorn on `0.0.0.0:8000` (`--config`, `--port`); on exit it stops the scan, turns the light off (caveat: with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6) and closes the controller and camera | `config`, `controller`, `camera`, `runner`, `server` |
+| `app/__main__.py` | Entrypoint: load settings, create the `CommandLog`, open controller (traffic goes to the log) and camera, lock white balance, start uvicorn on `0.0.0.0:8000` (`--config`, `--port`); on exit it stops the scan, turns the light off when `light_control` is on (caveat: with a PWM-dimmable driver such as the RCD-24 (not the lean build's driver), `LIGHT 0` can be full on; see `wiring.md` section 6) and closes the controller and camera | `config`, `controller`, `camera`, `runner`, `server` |
 | `app/config.py` | `Settings` dataclass with defaults; `load` ignores unknown keys, `save` writes JSON | stdlib |
 | `app/controller.py` | Serial wrapper: `advance`, `wind`, `set_light`, `status`, `command` (operator line from the terminal); blocks until the reply; raises `ControllerError`; reports each command, reply and error to `on_traffic` | `pyserial` (imported in `open`) |
 | `app/console.py` | `CommandLog`: thread-safe ring of the last 500 entries (`cmd`, `reply`, `event`, `error`) with ids that never repeat | stdlib |
@@ -49,7 +49,7 @@ The Pi never drives motors or the LED directly. It sends one text command per li
 | `firmware/pins.py` | GPIO numbers | none |
 | `firmware/main.py` | MicroPython loop: read a line, parse, move a motor or set the LED, reply | `machine`, the three modules above |
 
-Web routes: `GET /`, `GET /api/status`, `GET /api/settings`, `POST /api/scan/start|pause|resume|stop`, `GET /api/preview.jpg`, `POST /api/test-frame`, `POST /api/light`, `POST /api/exposure`, `GET /api/log?since=<id>`, `POST /api/console`.
+Web routes (`POST /api/light` and console `LIGHT` are refused with 400 unless `light_control` is true): `GET /`, `GET /api/status`, `GET /api/settings`, `POST /api/scan/start|pause|resume|stop`, `GET /api/preview.jpg`, `POST /api/test-frame`, `POST /api/light`, `POST /api/exposure`, `GET /api/log?since=<id>`, `POST /api/console`.
 
 `GET /api/status` returns `state` (`idle`, `running`, `paused`, `finishing`, `done`, `error`), `name`, `frame`, `flagged` (count), `error`, and also `flagged_frames` (the last 50 flagged frame numbers), `elapsed_s` (since the scan started, 0 when idle), `rate_fps` (frames per second over the last 30 s, 0 unless running), `disk_free_gb` (free space on the output drive) and `target_frac` (`[x, y]` of the alignment target as fractions of the frame, `null` until known).
 
@@ -75,7 +75,7 @@ The film motor keeps its coil energised after a move (it holds position); the re
 
 ## 4. The scan loop (`Scanner.run` in `app/scan.py`)
 
-Before the loop, the light is set to `light_percent`. Each pass:
+Before the loop, the light is set to `light_percent` (only when `light_control` is true; otherwise the app never touches the light). Each pass:
 
 1. Stop if `stop()` was called or `max_frames` is reached. Wait while paused.
 2. Check finished background writes; if one failed, raise `ScanError("frame write failed")`.
@@ -88,7 +88,7 @@ Before the loop, the light is set to `light_percent`. Each pass:
 9. Wind: after `frames_per_wind + 3` frames are waiting, wind `frames_per_wind` frames of film onto the spool (`wind_steps` at `wind_rate`), leaving a little slack, and save `scan.json`.
 10. Advance one frame (`steps_per_frame` at `advance_rate`) and report progress.
 
-When the loop ends, pending writes finish, the light is turned off (caveat: with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6), and `scan.json` is saved. State is `done` or `error`. While that happens the runner reports `finishing`, never `done`, so `done` means the frames and `scan.json` are on disk.
+When the loop ends, pending writes finish, the light is turned off when `light_control` is true (caveat: with a PWM-dimmable driver such as the RCD-24 (not the lean build's driver), `LIGHT 0` can be full on; see `wiring.md` section 6), and `scan.json` is saved. State is `done` or `error`. While that happens the runner reports `finishing`, never `done`, so `done` means the frames and `scan.json` are on disk.
 
 ## 5. Alignment
 
@@ -139,7 +139,8 @@ Use 18 fps for Super 8 sound-speed playback (24 fps silent speed is not used her
 | `frame_height_mm`, `film_thickness_mm`, `spool_inner_diameter_mm` | 4.01, 0.15, 32.0 | Spool geometry used by `wind_steps` |
 | `exposure_us`, `gain` | 2000, 1.0 | Fixed camera exposure |
 | `flip_vertical` | true | Flip captures so nudges go the right way |
-| `light_percent` | 100 | LED brightness |
+| `light_control` | false | False: fixed-brightness LED, which is simply on whenever it is powered; the app does not control it and never switches it off (it stays lit after a scan until the supply is switched off). The app never sends `LIGHT` (not at start-up, scan start, scan end or exit, nor for the test frame), `POST /api/light` and console `LIGHT` give HTTP 400 `light control is disabled`, `GET /api/settings` reports it and the page hides the slider and the `LIGHT` help line. True (dimmable LED and firmware PWM on GPIO 15): behaviour as described elsewhere in this document. Old config files without it load as false |
+| `light_percent` | 100 | LED brightness (used only when `light_control` is true) |
 | `sprocket_strip_frac` | 0.16 | Left fraction of the image searched for the hole |
 | `sprocket_threshold` | 230 | Brightness (0-255) that counts as the hole |
 | `sprocket_min_area_frac` / `sprocket_max_area_frac` | 0.012 / 0.06 | Accepted hole area, fraction of the detection image |
@@ -156,11 +157,11 @@ Settings are read from the JSON file at start. The web UI changes light and expo
 | Situation | What happens |
 |---|---|
 | Sprocket not found | Recapture up to `retries` times. If still missing, the frame is saved with the previous offset, its number is added to `flagged` in `scan.json`, and the scan continues. |
-| Sprocket lost | `max_consecutive_failures` (5) frames in a row without a hole raises `ScanError: sprocket hole lost`. State becomes `error`, the light is turned off (see the RCD-24 caveat below). |
+| Sprocket lost | `max_consecutive_failures` (5) frames in a row without a hole raises `ScanError: sprocket hole lost`. State becomes `error`, the light is turned off if `light_control` is true (see the PWM-driver caveat below). |
 | Too many nudges | More than `max_nudges` (25) nudges for one frame raises `ScanError`. State `error`. |
 | Controller silent or `ERR` | `ControllerError` ("no reply ... (timeout)" after `serial_timeout_s`, or the `ERR` text, or an unexpected reply). Caught by the loop: state `error`, message in `status`. Frames already written stay on disk and the reel can be continued by starting with the same name. |
 | Write failure | The failed frame number is flagged. The loop notices on the next pass (or at the end), raises "frame write failed", and the error text lists each failure. |
 | `scan.json` cannot be saved | Added to the error message, state `error`. |
 | Action while a scan runs (preview grab, test frame, light, exposure, console command, second start) | `RunnerError`, HTTP 409. A bad reel name or an unknown console command gives HTTP 400; a controller failure on a console command gives 502. |
 
-In every ending the Scanner tries to turn the light off; a failure there is ignored because the controller may be what failed. Caveat: with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6.
+In every ending, when `light_control` is true, the Scanner tries to turn the light off; a failure there is ignored because the controller may be what failed. Caveat: with a PWM-dimmable driver such as the RCD-24 (not the lean build's driver), `LIGHT 0` can be full on; see `wiring.md` section 6.
