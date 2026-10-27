@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Super 8 Scanner</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { margin: 0; padding: 16px; max-width: 760px; margin-inline: auto; }
+  h1 { font-size: 1.3rem; }
+  img { width: 100%; background: #111; border-radius: 6px; aspect-ratio: 4 / 3; object-fit: contain; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+  button { padding: 8px 14px; font-size: 1rem; }
+  input[type=text], input[type=number] { padding: 6px; font-size: 1rem; width: 8em; }
+  #status { font-variant-numeric: tabular-nums; padding: 8px; border-radius: 6px; background: rgba(128,128,128,.15); }
+  .err { color: #c0392b; }
+</style>
+</head>
+<body>
+<h1>Super 8 Scanner</h1>
+<div id="status">loading...</div>
+<img id="preview" alt="preview">
+<div class="row">
+  <input id="name" type="text" placeholder="reel name" value="reel1" aria-label="Reel name">
+  <button id="start">Start</button>
+  <button id="pause">Pause</button>
+  <button id="resume">Resume</button>
+  <button id="stop">Stop</button>
+  <button id="test">Test frame</button>
+</div>
+<div class="row">
+  <label>Light <input id="light" type="range" min="0" max="100" value="100"> <span id="lightv">100</span>%</label>
+</div>
+<div class="row">
+  <label>Exposure (&micro;s) <input id="exp" type="number" min="1" value="2000"></label>
+  <label>Gain <input id="gain" type="number" min="1" max="16" step="0.1" value="1"></label>
+  <button id="apply">Apply</button>
+</div>
+<div id="msg" class="err" role="status"></div>
+<script>
+const $ = id => document.getElementById(id);
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : "request failed (" + r.status + ")");
+  return data;
+}
+async function act(fn) {
+  try { $("msg").textContent = ""; await fn(); } catch (e) { $("msg").textContent = e.message; }
+}
+const post = (p, b) => act(() => api(p, b ?? {}));
+$("start").onclick = () => post("/api/scan/start", {name: $("name").value});
+$("pause").onclick = () => post("/api/scan/pause");
+$("resume").onclick = () => post("/api/scan/resume");
+$("stop").onclick = () => post("/api/scan/stop");
+$("test").onclick = () => act(async () => {
+  const r = await api("/api/test-frame", {});
+  $("msg").textContent = r.detected ? "Sprocket hole found at " + Math.round(r.x) + ", " + Math.round(r.y) : "Sprocket hole not found";
+  refreshPreview();
+});
+$("light").oninput = () => { $("lightv").textContent = $("light").value; };
+$("light").onchange = () => post("/api/light", {percent: +$("light").value});
+$("apply").onclick = () => post("/api/exposure", {exposure_us: +$("exp").value, gain: +$("gain").value});
+function refreshPreview() { $("preview").src = "/api/preview.jpg?t=" + Date.now(); }
+async function poll() {
+  try {
+    const s = await api("/api/status");
+    $("status").textContent = s.state + (s.name ? " | " + s.name : "") + " | frames " + s.frame + " | flagged " + s.flagged +
+      (s.video ? " | video " + s.video : "") + (s.error ? " | " + s.error : "");
+    $("status").className = s.error ? "err" : "";
+    if (s.state === "running" || s.state === "paused") refreshPreview();
+  } catch (e) { $("status").textContent = "cannot reach scanner"; }
+}
+refreshPreview();
+setInterval(poll, 1500);
+poll();
+</script>
+</body>
+</html>
