@@ -332,3 +332,12 @@ def test_quality_must_be_an_integer(tmp_path, capsys):
     assert er.main([str(reel), "--dry-run", "--encoder", "cpu", "--quality", "20"],
                    probe=probe_with(CANNED)) == 0
     assert "-crf 20 " in capsys.readouterr().out
+
+
+def test_concat_list_entries_are_absolute_for_a_relative_folder(tmp_path, monkeypatch):
+    make_reel(tmp_path / "reelA", [0, 1, 3])
+    monkeypatch.chdir(tmp_path)
+    lst = er.write_concat_list(Path("reelA") / "frames", 20, tmp_path / "list.txt")
+    entries = [l[6:-1] for l in lst.read_text().splitlines() if l.startswith("file '")]
+    assert len(entries) == 3
+    assert all(Path(e).is_absolute() and Path(e).exists() for e in entries)

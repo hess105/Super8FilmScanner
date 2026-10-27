@@ -106,7 +106,7 @@ def find_gaps(frames_dir):
 
 
 def write_concat_list(frames_dir, fps, dest):
-    frames_dir = Path(frames_dir)
+    frames_dir = Path(frames_dir).resolve()  # the concat demuxer resolves relative entries against the list's folder
     names = [frames_dir / f"frame_{n:08d}.png" for n in frame_numbers(frames_dir)]
     lines = []
     for p in names:
