@@ -25,7 +25,7 @@ This describes the code as committed on `feature/scanner-refinement`. The design
   film stepper      take-up stepper
 ```
 
-The LED driver link carries 20 kHz PWM in the current firmware. Caveat: with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6.
+The LED driver link carries 20 kHz PWM in the current firmware, but the app uses it only when `light_control` is true and the LED driver supports PWM dimming. With the default (`light_control` false) the LED is simply on whenever it is powered: the app does not control it and never switches it off. Caveat (when `light_control` is true): with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6.
 
 The Pi never drives motors or the LED directly. It sends one text command per line and waits for the reply (`OK` or `ERR ...`) before sending the next.
 
@@ -139,7 +139,7 @@ Use 18 fps for Super 8 sound-speed playback (24 fps silent speed is not used her
 | `frame_height_mm`, `film_thickness_mm`, `spool_inner_diameter_mm` | 4.01, 0.15, 32.0 | Spool geometry used by `wind_steps` |
 | `exposure_us`, `gain` | 2000, 1.0 | Fixed camera exposure |
 | `flip_vertical` | true | Flip captures so nudges go the right way |
-| `light_control` | false | False: fixed-brightness LED. The app never sends `LIGHT` (not at start-up, scan start, scan end or exit, nor for the test frame), `POST /api/light` and console `LIGHT` give HTTP 400 `light control is disabled`, `GET /api/settings` reports it and the page hides the slider and the `LIGHT` help line. True (dimmable LED and firmware PWM on GPIO 15): behaviour as described elsewhere in this document. Old config files without it load as false |
+| `light_control` | false | False: fixed-brightness LED, which is simply on whenever it is powered; the app does not control it and never switches it off (it stays lit after a scan until the supply is switched off). The app never sends `LIGHT` (not at start-up, scan start, scan end or exit, nor for the test frame), `POST /api/light` and console `LIGHT` give HTTP 400 `light control is disabled`, `GET /api/settings` reports it and the page hides the slider and the `LIGHT` help line. True (dimmable LED and firmware PWM on GPIO 15): behaviour as described elsewhere in this document. Old config files without it load as false |
 | `light_percent` | 100 | LED brightness (used only when `light_control` is true) |
 | `sprocket_strip_frac` | 0.16 | Left fraction of the image searched for the hole |
 | `sprocket_threshold` | 230 | Brightness (0-255) that counts as the hole |

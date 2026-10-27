@@ -22,7 +22,7 @@ def main():
     if settings.light_control:
         controller.set_light(settings.light_percent)
     camera = Picamera2Camera(settings)
-    camera.lock_white_balance()  # with the scanner light on and empty gate
+    camera.lock_white_balance()  # the LED must already be powered (with light_control false the app does not switch it on); empty gate
     runner = ScanRunner(controller, camera, settings, log=log)
     try:
         uvicorn.run(create_app(runner), host="0.0.0.0", port=args.port)  # LAN only, no auth in v1
