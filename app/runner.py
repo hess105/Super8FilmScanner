@@ -8,7 +8,7 @@ from .align import detect_sprocket
 from .scan import PREVIEW_WIDTH, Scanner
 from .video import build_mp4
 
-NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+NAME_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 class RunnerError(Exception):
@@ -28,6 +28,7 @@ class ScanRunner:
         self._name = None
         self._video = None
         self._test_preview = None
+        self._lock = threading.Lock()  # idle check + action must be atomic
 
     # helpers -----------------------------------------------------------
     def _busy(self):
@@ -59,22 +60,23 @@ class ScanRunner:
                 self._video = "error: %s" % e
 
     def start(self, name, max_frames=None):
-        if not NAME_RE.match(name):
+        if not isinstance(name, str) or not NAME_RE.fullmatch(name):
             raise RunnerError("reel name must be 1-64 letters, digits, - or _", 400)
-        self._require_idle()
-        self._name = name
-        self._video = None
-        self._test_preview = None
-        self._scanner = Scanner(self.controller, self.camera, self.settings, Path(self.settings.output_dir) / name)
-        self._thread = threading.Thread(target=self._run, args=(max_frames,), daemon=True)
-        self._thread.start()
+        with self._lock:
+            self._require_idle()
+            self._name = name
+            self._video = None
+            self._test_preview = None
+            self._scanner = Scanner(self.controller, self.camera, self.settings, Path(self.settings.output_dir) / name)
+            self._thread = threading.Thread(target=self._run, args=(max_frames,), daemon=True)
+            self._thread.start()
 
     def pause(self):
-        if self._busy():
+        if self._busy() and self._scanner.state in ("running", "paused"):
             self._scanner.pause()
 
     def resume(self):
-        if self._busy():
+        if self._busy() and self._scanner.state in ("running", "paused"):
             self._scanner.resume()
 
     def stop(self):
@@ -85,7 +87,8 @@ class ScanRunner:
         sc = self._scanner
         if sc is None:
             return {"state": "idle", "name": None, "frame": 0, "flagged": 0, "error": None, "video": None}
-        state = "encoding" if self._video == "encoding" else sc.state
+        # Scanner sets "done" before its writes drain and the video is built; never report done while the thread lives
+        state = "encoding" if self._busy() and sc.state == "done" else sc.state
         return {"state": state, "name": self._name, "frame": sc.frame_number, "flagged": len(sc.flagged),
                 "error": sc.error, "video": self._video}
 
@@ -95,10 +98,15 @@ class ScanRunner:
             return self._jpeg(self._scanner.preview)
         if self._test_preview is not None:
             return self._test_preview
-        self._require_idle()
-        return self._jpeg(self._grab())
+        with self._lock:
+            self._require_idle()
+            return self._jpeg(self._grab())
 
     def test_frame(self):
+        with self._lock:
+            return self._test_frame()
+
+    def _test_frame(self):
         self._require_idle()
         frame = self._grab()
         centre = detect_sprocket(frame, self.settings)
@@ -111,12 +119,14 @@ class ScanRunner:
         return {"detected": True, "x": centre[0], "y": centre[1]}
 
     def set_light(self, percent):
-        self._require_idle()
-        self.controller.set_light(percent)
-        self.settings.light_percent = percent
+        with self._lock:
+            self._require_idle()
+            self.controller.set_light(percent)
+            self.settings.light_percent = percent
 
     def set_exposure(self, exposure_us, gain):
-        self._require_idle()
-        self.camera.set_exposure(exposure_us, gain)
-        self.settings.exposure_us = exposure_us
-        self.settings.gain = gain
+        with self._lock:
+            self._require_idle()
+            self.camera.set_exposure(exposure_us, gain)
+            self.settings.exposure_us = exposure_us
+            self.settings.gain = gain

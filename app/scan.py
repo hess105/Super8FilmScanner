@@ -102,7 +102,7 @@ class Scanner:
 
     def run(self, max_frames=None):
         s = self.settings
-        self.state = "running"
+        self.state = "running" if self._running.is_set() else "paused"  # a pause() before run() sticks
         self.error = None
         start = on_spool = self.frame_number
         to_wind = nudges = failures = 0
