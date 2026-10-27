@@ -6,21 +6,20 @@ Hardware here is the design intent. The code in `firmware/` is the source of tru
 
 The v3 selection is in [bom.md](bom.md), with links, ordering codes and the checks to make before ordering. All prices are rough USD **estimates**; DigiKey part numbers and prices come from search listings (DigiKey blocks automated fetches), so check live stock and price. Datasheets: [index](../datasheets/README.md).
 
-| Item | Selection | Estimate |
+| Item | Selection | Low-high estimate |
 |---|---|---|
-| Computer | Raspberry Pi 4 Model B, 2 GB | 45-60 |
+| Computer | Raspberry Pi 4 Model B, 2 GB (2 GB price not retrieved; estimate) | 45-60 |
 | Camera | Pi HQ Camera (not on DigiKey; PiShop or other resellers) | 55 |
 | Lens | Pimoroni microscope lens 0.12-1.8x | 30 |
 | Motors | 2x NEMA 17 pancake steppers (owner's pick, Amazon) | 20 |
 | Controller | Pico (SC0915) 5, 2x official TMC2209-SILENTSTEPSTICK 38 | 43 |
-| LED | Cree CXA1304 COB (9 V class), RECOM RCD-24-0.70 driver, TE LUMAWISE holder, Fischer SK 577 50 SA heat sink, opal diffuser | 40-60 |
+| LED | Cree CXA1304 8-15, RECOM RCD-24-0.70 13-21, TE LUMAWISE holder 2-5, Fischer SK 577 50 SA heat sink 15-20 (opal diffuser not priced) | 38-61 |
 | 12 V and 5 V | Bel/CUI SDI65-12-UC-P5 12 V 5 A adapter 43, Murata OKX-T/5-D12P-C 5 V module 8 | 51 |
 | Protection and parts | Littelfuse 03455LS1H fuse holder and fuse, Rubycon capacitors, JST XH connectors, barrel jack, wire, perfboard, microSD | 25 |
 | Printed case and parts, filament, rubber wheel, hardware | Retail | 20 |
-| Not itemised | Shipping, tax, spares and price drift: a balancing item, because the BOM states about $390 but its itemised lines (high ends) sum to about $364 | about 26 |
-| **Total** | | **about 390 without the SSD** |
+| **Total** | Sum of the rows: low 45+55+30+20+43+38+51+25+20 = 327; high 60+55+30+20+43+61+51+25+20 = 365 | **about 330-365 without the SSD** |
 
-An SSD for frames (1 TB) adds about $70-90. A **budget swap** (third-party TMC2209 modules, a generic 12 V 5 A adapter, a Pololu D24V50F5 5 V regulator) brings the total to about **$330 without the SSD**. The totals follow the BOM's cost section; the rows above use the high end of each range. A Pi 5 instead of the Pi 4 adds about $35. Upgrading to an enlarger lens later adds about $35-135.
+An SSD for frames (1 TB) adds about $70-90. A **budget swap** replaces the official TMC2209 modules (38) with third-party modules (about 16, per the BOM), the 12 V adapter (43) with a generic 12 V 5 A adapter (about 22, per the BOM) and the Murata module (8) with a Pololu D24V50F5 5 V regulator (price not retrieved; I assume 15-20, an estimate): low 327 - 89 + 16 + 22 + 15 = 291, high 365 - 89 + 16 + 22 + 20 = 334, so about **$290-335 without the SSD**. All prices are estimates. A Pi 5 instead of the Pi 4 adds about $35. Upgrading to an enlarger lens later adds about $35-135.
 
 **Lead-time risks** (as shown on DigiKey pages, not confirmed): Murata 5 V module 38 weeks, official TMC2209 module 16-19 weeks, RECOM driver 10-17 weeks, 12 V adapters 12-28 weeks depending on model. The LED section also has a design issue to resolve before relying on the parts: the RCD-24's PWM input is active low and rated to 1 kHz, while the firmware drives 20 kHz ([wiring](wiring.md) section 6, [roadmap](../ROADMAP.md)).
 
@@ -31,7 +30,7 @@ An SSD for frames (1 TB) adds about $70-90. A **budget swap** (third-party TMC22
 | Film STEP / DIR / EN | 2 / 3 / 4 |
 | Reel STEP / DIR / EN | 5 / 6 / 7 |
 | Sensor input (reserved, not read by the firmware yet) | 14 |
-| LED PWM (20 kHz) | 15 |
+| LED PWM (20 kHz; outside the RCD-24's range, see wiring.md section 6) | 15 |
 
 EN is active low on the TMC2209. The firmware drives EN high at start (motors off) and low for a move. Each EN line needs an external pull-up to VIO: the RP2040 pulls its GPIOs down at reset, so without it the drivers are enabled until the firmware runs (see `wiring.md`).
 
