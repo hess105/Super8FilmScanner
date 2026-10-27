@@ -157,3 +157,15 @@ def test_page_has_script_element_ids(tmp_path):
     page = client.get("/").text
     for element_id in ("terminal", "term-input", "state-pill", "preview", "btn-start"):
         assert 'id="%s"' % element_id in page
+
+
+def test_controller_error_on_light_is_502(tmp_path):
+    from app.controller import ControllerError
+    client, film = make_client(tmp_path)
+
+    def boom(*a):
+        raise ControllerError("no reply to 'LIGHT 40' (timeout)")
+
+    film.set_light = boom
+    r = client.post("/api/light", json={"percent": 40})
+    assert r.status_code == 502 and "no reply" in r.json()["detail"]

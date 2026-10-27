@@ -1,9 +1,15 @@
+import re
+
+
 class ControllerError(Exception):
     pass
 
 
 COMMANDS = ("ADVANCE", "WIND", "LIGHT", "STATUS")
 MAX_COMMAND = 40
+INT_RE = re.compile(r"^-?\d+$")
+DEFAULT_RATE = {"ADVANCE": 2000, "WIND": 1500}
+MAX_STEPS, MAX_RATE, MAX_MOVE_S = 20000, 4000, 15  # the firmware cannot abort a move
 
 
 class Controller:
@@ -46,7 +52,23 @@ class Controller:
         if (not parts or len(line) > MAX_COMMAND or parts[0].upper() not in COMMANDS
                 or not all(" " <= c <= "~" for c in line)):
             raise ValueError("unknown command")
-        return self._send(" ".join([parts[0].upper()] + parts[1:]))
+        name, args = parts[0].upper(), parts[1:]
+        if not all(INT_RE.match(a) for a in args):
+            raise ValueError("%s arguments must be plain integers" % name)
+        nums = [int(a) for a in args]
+        if name == "STATUS" and nums:
+            raise ValueError("STATUS takes no arguments")
+        if name == "LIGHT" and (len(nums) != 1 or not 0 <= nums[0] <= 100):
+            raise ValueError("LIGHT takes one percent, 0-100")
+        if name in DEFAULT_RATE:
+            if len(nums) not in (1, 2):
+                raise ValueError("%s takes steps and an optional rate" % name)
+            steps, rate = nums[0], nums[1] if len(nums) == 2 else DEFAULT_RATE[name]
+            if not 1 <= rate <= MAX_RATE:
+                raise ValueError("rate must be 1-%d steps/s" % MAX_RATE)
+            if abs(steps) > MAX_STEPS or abs(steps) / rate > MAX_MOVE_S:
+                raise ValueError("move too long: at most %d steps and %d s" % (MAX_STEPS, MAX_MOVE_S))
+        return self._send(" ".join([name] + args))
 
     def _move(self, name, steps, rate):
         line = "%s %d" % (name, steps)

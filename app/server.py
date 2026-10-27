@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
+from .controller import ControllerError
 from .runner import RunnerError
 
 STATIC = Path(__file__).parent / "static"
@@ -34,6 +35,8 @@ def create_app(runner):
             return fn(*args)
         except RunnerError as e:
             raise HTTPException(e.status, str(e))
+        except ControllerError as e:
+            raise HTTPException(502, str(e))
 
     @app.get("/")
     def index():

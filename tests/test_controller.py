@@ -112,3 +112,21 @@ def test_port_io_error_is_logged_and_raised_as_controller_error(fail_on):
     with pytest.raises(ControllerError, match="device disconnected") as e:
         c.status()
     assert seen == [("cmd", "STATUS"), ("error", str(e.value))]
+
+
+@pytest.mark.parametrize("line", ["ADVANCE 164", "advance -5 170", "WIND 1021 1500", "LIGHT 30", "STATUS"])
+def test_console_moves_within_limits_are_sent(line):
+    port = FakePort(["OK"])
+    Controller(port).command(line)
+    assert port.written == [line.upper() + "\n"]
+
+
+@pytest.mark.parametrize("line", [
+    "ADVANCE 164000", "ADVANCE 164 1", "ADVANCE 20001", "WIND 99999999", "ADVANCE x", "ADVANCE 1_0",
+    "ADVANCE 0x10", "ADVANCE 1 2 3", "ADVANCE 164 0", "ADVANCE 164 4001", "LIGHT 101", "LIGHT -1",
+    "STATUS now", "ADVANCE", "LIGHT", "ADVANCE +5"])
+def test_console_rejects_unbounded_or_malformed_arguments(line):
+    port = FakePort(["OK"])
+    with pytest.raises(ValueError):
+        Controller(port).command(line)
+    assert port.written == []
