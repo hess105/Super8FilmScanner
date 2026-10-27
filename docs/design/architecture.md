@@ -31,22 +31,31 @@ The Pi never drives motors or the LED directly. It sends one text command per li
 
 | Module | Responsibility | Depends on |
 |---|---|---|
-| `app/__main__.py` | Entrypoint: load settings, open controller and camera, lock white balance, start uvicorn on `0.0.0.0:8000` (`--config`, `--port`) | `config`, `controller`, `camera`, `runner`, `server` |
+| `app/__main__.py` | Entrypoint: load settings, create the `CommandLog`, open controller (traffic goes to the log) and camera, lock white balance, start uvicorn on `0.0.0.0:8000` (`--config`, `--port`) | `config`, `controller`, `camera`, `runner`, `server` |
 | `app/config.py` | `Settings` dataclass with defaults; `load` ignores unknown keys, `save` writes JSON | stdlib |
-| `app/controller.py` | Serial wrapper: `advance`, `wind`, `set_light`, `status`; blocks until the reply; raises `ControllerError` | `pyserial` (imported in `open`) |
+| `app/controller.py` | Serial wrapper: `advance`, `wind`, `set_light`, `status`, `command` (operator line from the terminal); blocks until the reply; raises `ControllerError`; reports each command, reply and error to `on_traffic` | `pyserial` (imported in `open`) |
+| `app/console.py` | `CommandLog`: thread-safe ring of the last 500 entries (`cmd`, `reply`, `event`, `error`) with ids that never repeat | stdlib |
 | `app/camera.py` | `Picamera2Camera`: full-resolution still capture as a BGR array, fixed exposure and gain, one-time white-balance lock | `picamera2` |
 | `app/align.py` | `detect_sprocket` (centre of the bright hole in the left strip), `align_offset`, `shift_frame` (whole-pixel shift, black fill) | OpenCV, NumPy |
 | `app/postprocess.py` | Opt-in denoise and resize (both off by default) | OpenCV |
 | `app/takeup.py` | `wind_steps`: motor steps to wind N frames onto the spool given how much is already on it | stdlib |
-| `app/scan.py` | `Scanner`: the scan loop, pause/resume/stop, background PNG writes, `scan.json` persistence | `align`, `postprocess`, `takeup`, OpenCV |
-| `app/runner.py` | `ScanRunner`: runs a `Scanner` on a thread, validates the reel name, serves preview/test-frame/light/exposure only while idle | `scan`, `align` |
+| `app/scan.py` | `Scanner`: the scan loop, pause/resume/stop, background PNG writes, `scan.json` persistence, `on_event` text for the log | `align`, `postprocess`, `takeup`, OpenCV |
+| `app/runner.py` | `ScanRunner`: runs a `Scanner` on a thread, validates the reel name, serves preview/test-frame/light/exposure/console only while idle, logs UI actions, reports status | `scan`, `align`, `console` |
 | `app/server.py` | FastAPI routes and the page `app/static/index.html` | `runner` |
 | `firmware/protocol.py` | `parse_command`, `format_ok`, `format_err`; pure Python, tested on a PC | none |
 | `firmware/motion.py` | `step_delays_us`: trapezoid speed profile, pure Python | none |
 | `firmware/pins.py` | GPIO numbers | none |
 | `firmware/main.py` | MicroPython loop: read a line, parse, move a motor or set the LED, reply | `machine`, the three modules above |
 
-Web routes: `GET /`, `GET /api/status`, `GET /api/settings`, `POST /api/scan/start|pause|resume|stop`, `GET /api/preview.jpg`, `POST /api/test-frame`, `POST /api/light`, `POST /api/exposure`.
+Web routes: `GET /`, `GET /api/status`, `GET /api/settings`, `POST /api/scan/start|pause|resume|stop`, `GET /api/preview.jpg`, `POST /api/test-frame`, `POST /api/light`, `POST /api/exposure`, `GET /api/log?since=<id>`, `POST /api/console`.
+
+`GET /api/status` returns `state` (`idle`, `running`, `paused`, `finishing`, `done`, `error`), `name`, `frame`, `flagged` (count), `error`, and also `flagged_frames` (the last 50 flagged frame numbers), `elapsed_s` (since the scan started, 0 when idle), `rate_fps` (frames per second over the last 30 s, 0 unless running), `disk_free_gb` (free space on the output drive) and `target_frac` (`[x, y]` of the alignment target as fractions of the frame, `null` until known).
+
+### Log and terminal
+
+One `CommandLog` (last 500 entries in memory, lost on restart) collects: every controller command (`cmd`) before it is written, every good reply (`reply`), every controller failure (`error`, just before `ControllerError` is raised), scan events (`event`: start, target set, each nudge, flagged frames, winds, pause, resume, stop, done or error; nothing per good frame) and UI actions (`event`: light, exposure, test frame). Each entry is `{"id", "t", "kind", "text"}`; ids start at 1 and keep counting when old entries drop. `GET /api/log?since=N` returns `{"entries": [...], "last_id": n}` with only entries newer than `N`; the page polls it every 0.7 s (3 s when the tab is hidden). No route clears the log; the page's Clear hides lines in that browser only.
+
+`POST /api/console` with `{"command": "..."}` (1-40 characters) sends one line to the controller and returns `{"reply": "<text after OK>"}`. Only `ADVANCE`, `WIND`, `LIGHT` and `STATUS` are accepted (case-insensitive, printable ASCII, no newline); anything else is HTTP 400 `unknown command`. It is refused with 409 while a scan runs, and a controller failure is 502 (its text is already in the log).
 
 ## 3. Controller protocol
 
@@ -140,6 +149,6 @@ Settings are read from the JSON file at start. The web UI changes light and expo
 | Controller silent or `ERR` | `ControllerError` ("no reply ... (timeout)" after `serial_timeout_s`, or the `ERR` text, or an unexpected reply). Caught by the loop: state `error`, message in `status`. Frames already written stay on disk and the reel can be continued by starting with the same name. |
 | Write failure | The failed frame number is flagged. The loop notices on the next pass (or at the end), raises "frame write failed", and the error text lists each failure. |
 | `scan.json` cannot be saved | Added to the error message, state `error`. |
-| Action while a scan runs (preview grab, test frame, light, exposure, second start) | `RunnerError`, HTTP 409. A bad reel name gives HTTP 400. |
+| Action while a scan runs (preview grab, test frame, light, exposure, console command, second start) | `RunnerError`, HTTP 409. A bad reel name or an unknown console command gives HTTP 400; a controller failure on a console command gives 502. |
 
 In every ending the Scanner tries to turn the light off; a failure there is ignored because the controller may be what failed.

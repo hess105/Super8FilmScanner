@@ -22,6 +22,7 @@ Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `s
     ffmpeg -framerate 18 -start_number 0 -i frames/frame_%08d.png -c:v libx264 -preset slower -crf 15 -pix_fmt yuv420p reel.mp4
 
 A 50 ft reel is about 3,600 frames of about 20 MB PNGs, so roughly 70-80 GB: check free disk space before a scan.
+The page shows the live gate with the target row, scan controls, camera and light settings, flagged frames, and a terminal at the bottom. The terminal lists every command sent to the controller (`→`), its reply (`←`), scan events such as nudges and winds (`●`) and errors (`✗`), and lets you type `ADVANCE`, `WIND`, `LIGHT` or `STATUS` yourself while no scan is running (type `help` for the arguments). It keeps the last 500 entries in memory; Clear only clears your view.
 Hardware numbers (steps per frame, motor rates, sprocket threshold) live in `scanner.json`; see `app/config.py` for every setting and its default.
 
 Design notes: [architecture](docs/design/architecture.md), [hardware](docs/design/hardware.md), [wiring](docs/design/wiring.md), [datasheets](docs/datasheets/README.md). Project plan and next steps: [roadmap](docs/ROADMAP.md).
