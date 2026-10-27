@@ -2085,47 +2085,45 @@ Expected: all three files listed, no "No such file". Then for each protocol comm
 git add docs/design docs/ROADMAP.md README.md && git commit -m "docs: architecture, hardware design, roadmap and next steps"
 ```
 
-### Task 16: Component datasheets
+### Task 16: Datasheet links
 
 **Files:**
-- Create: `docs/datasheets/README.md` (index), `docs/datasheets/*.pdf` (the collected files)
+- Create: `docs/datasheets/README.md` (the index of links)
 - Modify: `docs/design/hardware.md` (link to the index from the bill of materials), `README.md` (add the link next to the other design notes)
 
 **Interfaces:**
 - Consumes: the bill of materials in `docs/design/hardware.md` (Task 15) and the spec's component list.
-- Produces: official datasheets stored in the repo, plus an index that Task 17 (wiring) cites for pin names and limits.
+- Produces: one README of verified links to the official datasheets, which Task 17 (wiring) cites for pin names and limits. No datasheet files are stored in the repository, because they are the publishers' copyrighted documents.
 
-Documentation task, no pytest test. It downloads files, so follow these rules exactly:
-- Download only from the manufacturer's or distributor's official site over HTTPS (for example `datasheets.raspberrypi.com`, `www.raspberrypi.com`, `www.analog.com` / `www.trinamic.com`, `shop.pimoroni.com`). Never from mirrors, forums or file-sharing sites. Never open or execute a downloaded file; only check it with `file` and store it.
-- Download with `curl -fL --proto '=https' -o <file> <url>`. Confirm each file really is a PDF with `file <path>` (expect "PDF document"). Delete anything that is not.
-- Use short, clear lowercase file names, for example `rp2040-datasheet.pdf`, `pico-datasheet.pdf`, `tmc2209-datasheet.pdf`, `raspberry-pi-4-datasheet.pdf`, `raspberry-pi-hq-camera-datasheet.pdf` (or the product brief if that is what exists), `picamera2-manual.pdf`.
-- Do not search for or store anything marked confidential, under NDA, or behind a login. The Sony IMX477 sensor datasheet is NDA-only: do not look for it, use the Raspberry Pi HQ camera documents instead.
+Documentation task, no pytest test. Rules:
+- Link only to the manufacturer's or an official distributor's site over HTTPS (for example `datasheets.raspberrypi.com`, `www.raspberrypi.com`, `www.analog.com` / `www.trinamic.com`, `shop.pimoroni.com`). Never link to mirrors, forums or file-sharing sites.
+- Do not download or store any datasheet in the repository. You may open the linked documents to read them.
+- The Sony IMX477 sensor datasheet is NDA-only: do not look for it. Link the Raspberry Pi HQ camera documents instead.
 
 - [ ] **Step 1: List the components**
 
 From `docs/design/hardware.md` and the spec, list every component and sort them into: (a) parts already fixed by the design: Raspberry Pi 4, Raspberry Pi High Quality Camera (IMX477 board), Raspberry Pi Pico / RP2040, Trinamic TMC2209 stepper driver, the Pimoroni 0.12-1.8x microscope lens, and the Picamera2 library manual; (b) parts whose model is not chosen yet: NEMA 17 pancake stepper, high-CRI COB LED, constant-current PWM LED driver, 12 V supply, 5 V buck converter, opal diffuser.
 
-- [ ] **Step 2: Download the datasheets for group (a)**
+- [ ] **Step 2: Find the official links for group (a)**
 
-Find each official document (for the Pi 4, the Pico and RP2040, and the HQ camera start from `https://www.raspberrypi.com/documentation/` and `https://datasheets.raspberrypi.com/`; for the TMC2209 start from the Analog Devices / Trinamic product page; for the lens use the Pimoroni product page, which may have no PDF), save each into `docs/datasheets/`, and check it with `file`. If a part has no downloadable official document, do not substitute one: record that in the index and link the product page.
+For the Pi 4, the Pico and RP2040 and the HQ camera start from `https://www.raspberrypi.com/documentation/` and `https://datasheets.raspberrypi.com/`; for the TMC2209 start from the Analog Devices / Trinamic product page; for the lens use the Pimoroni product page, which may have no PDF; for Picamera2 use the Raspberry Pi documentation page. Prefer a direct link to the current datasheet PDF plus the product page. If a part has no public datasheet, link only the product page and say so.
 
 - [ ] **Step 3: Write `docs/datasheets/README.md`**
 
-A table with one row per component in both groups: component, role in the build, manufacturer, file name (or "none"), source URL, date retrieved, file size, SHA-256 (`shasum -a 256`), document version or revision shown on the cover, licence or redistribution note as stated by the publisher (write "not stated, check before redistributing" if none is given), and status (`stored`, `no public PDF`, `part not chosen yet`). For group (b) rows, write what to look for in the datasheet once a model is chosen (for example motor rated current and holding torque, LED forward voltage and current, driver dimming input range). Under the table, add a note that datasheets are the manufacturers' copyrighted documents, kept here for convenience, that the repository's GPL licence does not apply to them, and that a publisher's own terms apply to redistribution.
+A table with one row per component in both groups: component, role in the build, manufacturer, links (datasheet and product page), document name and the revision or date shown on its cover, date the link was checked, link status, and notes. For group (b) rows, write the specs to look for once a model is chosen (for example motor rated current and holding torque, LED forward voltage and current, driver dimming input range). Under the table, add a note that the documents belong to their publishers, are not stored here, and that links can move, so each row records the document name to search for if a link breaks.
 
 - [ ] **Step 4: Link the index**
 
 In `docs/design/hardware.md`, in the bill of materials section, add `Datasheets: [index](../datasheets/README.md).` In `README.md`, extend the design notes line with `[datasheets](docs/datasheets/README.md)`.
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 5: Verify the links**
 
-Run: `file docs/datasheets/*.pdf` and `du -ch docs/datasheets/*.pdf | tail -1`
-Expected: every file reported as "PDF document", and a total size reported (state it in the report; flag any single file over 10 MB). Run `shasum -a 256 docs/datasheets/*.pdf` and confirm each hash matches the index. Confirm every file listed in the index exists and every PDF has an index row.
+For every URL in the index run: `curl -sIL -o /dev/null -w '%{http_code} %{url_effective}\n' "<url>"`. If a site rejects HEAD requests, retry with `curl -sL -r 0-0 -o /dev/null -w '%{http_code} %{url_effective}\n' "<url>"`. Expected: a 200 after any redirects. Fix or replace any link that fails, and record the final status in the index. Run `git status --short` and confirm no file other than the three above changed (no PDFs).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/datasheets docs/design/hardware.md README.md && git commit -m "docs: component datasheets and index"
+git add docs/datasheets/README.md docs/design/hardware.md README.md && git commit -m "docs: datasheet link index"
 ```
 
 ---
@@ -2144,7 +2142,7 @@ Documentation task, no pytest test. Use Mermaid diagrams (GitHub renders them) p
 
 - [ ] **Step 1: Read the sources**
 
-Read `firmware/pins.py`, `firmware/main.py`, `app/config.py`, `docs/design/hardware.md` and the datasheet index `docs/datasheets/README.md` (Task 16). Note every GPIO and which signal it carries. Take pin names and limits from the stored datasheets and cite the file name next to each fact (for example "TMC2209 datasheet, pin table").
+Read `firmware/pins.py`, `firmware/main.py`, `app/config.py`, `docs/design/hardware.md` and the datasheet link index `docs/datasheets/README.md` (Task 16). Note every GPIO and which signal it carries. Open the linked datasheets and take pin names and limits from them, citing the document next to each fact (for example "TMC2209 datasheet, pin table"), with a link from the index.
 
 - [ ] **Step 2: Write `docs/design/wiring.md`**
 
