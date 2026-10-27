@@ -29,7 +29,7 @@ If the camera is bought new the total is about $250-255. A Pi 5 instead of the P
 | Sensor input (reserved, not read by the firmware yet) | 14 |
 | LED PWM (20 kHz) | 15 |
 
-EN is active low on the TMC2209. The firmware drives EN high at start (motors off) and low for a move.
+EN is active low on the TMC2209. The firmware drives EN high at start (motors off) and low for a move. Each EN line needs an external pull-up to VIO: the RP2040 pulls its GPIOs down at reset, so without it the drivers are enabled until the firmware runs (see `wiring.md`).
 
 ## 3. Wiring overview
 

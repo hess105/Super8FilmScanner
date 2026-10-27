@@ -60,14 +60,16 @@ Pin numbers: Pico datasheet Figure 2 (physical pin numbers, Rev3 board). GPIOs: 
 |---|---|---|---|---|---|
 | FILM_STEP | 2 | 4 | Film TMC2209 STEP | Pico to driver | One pulse per microstep |
 | FILM_DIR | 3 | 5 | Film TMC2209 DIR | Pico to driver | Direction |
-| FILM_EN | 4 | 6 | Film TMC2209 EN | Pico to driver | Active low; firmware starts it high; film motor is held after a move |
+| FILM_EN | 4 | 6 | Film TMC2209 EN | Pico to driver | Active low; needs an external pull-up to VIO (see note below); firmware drives it high at start; film motor is held after a move |
 | REEL_STEP | 5 | 7 | Reel TMC2209 STEP | Pico to driver | |
 | REEL_DIR | 6 | 9 | Reel TMC2209 DIR | Pico to driver | |
-| REEL_EN | 7 | 10 | Reel TMC2209 EN | Pico to driver | Active low; reel motor is released after each move |
+| REEL_EN | 7 | 10 | Reel TMC2209 EN | Pico to driver | Active low; needs an external pull-up to VIO (see note below); reel motor is released after each move |
 | SENSOR_IN | 14 | 19 | Optional sensor | Sensor to Pico | Reserved; the firmware does not read it |
 | LED_PWM | 15 | 20 | LED driver dimming input | Pico to driver | 20 kHz PWM from `firmware/main.py` |
 | 3V3(OUT) | | 36 | Driver VIO pins | Power out | See section 2 |
 | GND | | 3, 8, 13, 18, 23, 28, 33, 38 | Common ground | | Pick the one nearest the signal pins (3 or 8) |
+
+**Required: pull-up on each EN line.** Fit one pull-up resistor from FILM_EN (GPIO 4) to VIO and one from REEL_EN (GPIO 7) to VIO. Nothing holds EN high before `firmware/main.py` runs: the RP2040 datasheet lists every user GPIO (including GPIO 4 and 7) with reset state "Pull-Down" (pin list table, and the pad control register field PDE resets to 0x1), so EN reads low and both TMC2209 drivers are enabled at power-up, in BOOTSEL, on a blank Pico and after a crash. With STEP also low there is no motion, but the coils are energised (holding current, heat). Resistor value: VERIFY against your module's datasheet before powering (the module may already have its own EN pull-up or pull-down, and EN polarity and VIO level must be checked too).
 
 Pico GPIO is 3.3 V logic.
 
@@ -119,7 +121,7 @@ All names and functions in this table are **unverified** (datasheet not read). V
 | PDN_UART | Single-wire UART / power-down pin | See below | See below |
 | Four motor pins | Coil A and coil B outputs | Film motor | Reel motor |
 
-- **EN is active low.** The firmware drives EN high at start (outputs off) and low for a move (`firmware/main.py`). The film driver is left enabled after a move, so the film does not drift; the reel driver is disabled after each move.
+- **EN is active low.** A pull-up from EN to VIO is required (see the note under the Pico pin table); without it the drivers are enabled until the firmware starts. The firmware drives EN high at start (outputs off) and low for a move (`firmware/main.py`). The film driver is left enabled after a move, so the film does not drift; the reel driver is disabled after each move.
 - **Microstepping.** `reel_steps_per_rev = 3200` in `app/config.py` is 200 full steps times 16, so it assumes 1/16 microstepping. Which MS1/MS2 levels select 1/16 is in the TMC2209 datasheet microstepping table (not read). VERIFY against your module's datasheet before powering, and tie MS1 and MS2 to GND or VIO accordingly; many modules set these with jumpers or solder pads. If you use a different resolution, change `reel_steps_per_rev` and `steps_per_frame`.
 - **PDN_UART.** In standalone STEP/DIR mode this pin has a required state. VERIFY against your module's datasheet before powering; some modules tie it for you, others leave it for you to wire. Do not leave it floating by guess.
 - Do not rely on the silkscreen order of one module to wire another.
@@ -157,6 +159,7 @@ flowchart LR
 - Never drive the LED directly from a GPIO.
 - Warning: if the dimming input needs more than 3.3 V to count as "high", the Pico cannot dim it directly. Check the driver datasheet before connecting GPIO 15.
 - Warning: many constant-current drivers pull their DIM/PWM input up internally to a voltage above 3.3 V, which can push current into GPIO 15. Measure the dimming input's open-circuit voltage before connecting. If it is above 3.3 V, drive it through a transistor or open-collector stage; this inverts the PWM, so the firmware duty would need inverting.
+- Warning: if the driver pulls DIM up internally, the LED runs at full brightness whenever the Pico is unpowered or not driving GPIO 15 (before the firmware starts, in BOOTSEL, after a crash). VERIFY the driver's behaviour with the dimming input unconnected.
 
 ## 7. Pi connections
 
