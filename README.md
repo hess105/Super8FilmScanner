@@ -20,6 +20,8 @@ Open `http://<pi-hostname>.local:8000`. There is no login, so only run it on a n
 Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `reel.mp4` and `scan.json`.
 Hardware numbers (steps per frame, motor rates, sprocket threshold) live in `scanner.json`; see `app/config.py` for every setting and its default.
 
+Design notes: [architecture](docs/design/architecture.md), [hardware](docs/design/hardware.md). Project plan and next steps: [roadmap](docs/ROADMAP.md).
+
 The code is unlikely to run straight out of the box on your computer/system, it will need minor amendments to folder names/paths etc.
 
 
