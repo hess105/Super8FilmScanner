@@ -24,9 +24,12 @@ class Controller:
 
     def _send(self, line):
         self._on_traffic("cmd", line)
-        self._port.reset_input_buffer()
-        self._port.write((line + "\n").encode("ascii"))
-        reply = self._port.readline().decode("ascii", "replace").strip()
+        try:
+            self._port.reset_input_buffer()
+            self._port.write((line + "\n").encode("ascii"))
+            reply = self._port.readline().decode("ascii", "replace").strip()
+        except OSError as e:  # pyserial's SerialException is an OSError (USB unplugged)
+            self._fail("%s: %s" % (line, e))
         if not reply:
             self._fail("no reply to %r (timeout)" % line)
         if reply.startswith("ERR"):

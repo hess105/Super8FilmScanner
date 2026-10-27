@@ -183,8 +183,12 @@ class ScanRunner:
         with self._lock:
             self._require_idle()
             try:
-                return {"reply": self.controller.command(command)}
+                reply = self.controller.command(command)
             except ValueError as e:
                 raise RunnerError(str(e), 400)
             except ControllerError as e:
                 raise RunnerError(str(e), 502)
+            parts = command.split()
+            if parts[0].upper() == "LIGHT" and len(parts) == 2 and parts[1].isdigit():
+                self.settings.light_percent = int(parts[1])  # keep the page's slider in step
+            return {"reply": reply}

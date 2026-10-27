@@ -361,3 +361,11 @@ def test_status_flagged_frames_and_rate(tmp_path, monkeypatch):
     wait_for(runner, {"done"})
     assert runner.status()["flagged_frames"] == [2]
     assert seen["rate_fps"] > 0
+
+
+def test_console_light_updates_settings(tmp_path):
+    film, runner = make_runner(tmp_path)
+    runner.console("light 30")
+    assert runner.settings.light_percent == 30
+    runner.console("status")
+    assert runner.settings.light_percent == 30

@@ -87,3 +87,28 @@ def test_command_rejects_bad_lines(line):
     with pytest.raises(ValueError, match="unknown command"):
         Controller(port).command(line)
     assert port.written == []
+
+
+class BrokenPort(FakePort):
+    def __init__(self, fail_on):
+        super().__init__(["OK"])
+        self.fail_on = fail_on
+
+    def write(self, data):
+        if self.fail_on == "write":
+            raise OSError("device disconnected")
+        super().write(data)
+
+    def readline(self):
+        if self.fail_on == "readline":
+            raise OSError("device disconnected")
+        return super().readline()
+
+
+@pytest.mark.parametrize("fail_on", ["write", "readline"])
+def test_port_io_error_is_logged_and_raised_as_controller_error(fail_on):
+    seen = []
+    c = Controller(BrokenPort(fail_on), on_traffic=lambda kind, text: seen.append((kind, text)))
+    with pytest.raises(ControllerError, match="device disconnected") as e:
+        c.status()
+    assert seen == [("cmd", "STATUS"), ("error", str(e.value))]

@@ -113,7 +113,7 @@
   #last-error:empty { display: none; }
 
   /* toast */
-  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: min(560px, calc(100vw - 32px));
+  #toast { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); max-width: min(560px, calc(100vw - 32px));
            padding: 12px 16px; border-radius: var(--radius-s); background: var(--raised); border: 1px solid var(--line);
            box-shadow: 0 8px 24px rgba(0,0,0,.3); font-size: 0.95rem; z-index: 10; }
   #toast:empty { display: none; }
@@ -413,8 +413,10 @@ $("btn-apply").onclick = async () => {
 // ---- terminal ---------------------------------------------------------------
 const term = $("terminal"), MAX_LINES = 1000, MARK = {cmd: "→", reply: "←", event: "●", error: "✗", local: " "};
 let since = 0, stick = true;
-const hidden = new Set(store.get("hiddenKinds", []));
-let history = store.get("history", []), histPos = history.length;
+const storedKinds = store.get("hiddenKinds", []), storedHistory = store.get("history", []);
+const hidden = new Set(Array.isArray(storedKinds) ? storedKinds.filter(k => k in MARK) : []);
+let history = Array.isArray(storedHistory) ? storedHistory.filter(h => typeof h === "string").slice(-50) : [];
+let histPos = history.length;
 
 function hhmmss(t) { return new Date(t * 1000).toTimeString().slice(0, 8); }
 function addLine(kind, text, t) {
@@ -459,7 +461,7 @@ applyFilters();
 
 $("term-clear").onclick = () => { term.replaceChildren(); afterAppend(); $("jump").hidden = true; stick = true; };
 $("term-copy").onclick = async () => {
-  const lines = [...term.children].filter(r => r.offsetParent !== null)
+  const lines = [...term.children].filter(r => !hidden.has(r.className.slice(2)))  // works while collapsed
     .map(r => [...r.children].map(c => c.textContent).join(" "));
   if (!lines.length) { toast("Nothing to copy", "err"); return; }
   const text = lines.join("\n");
@@ -483,7 +485,7 @@ function setCollapsed(c) {
   if (!c) term.scrollTop = term.scrollHeight;
 }
 $("term-toggle").onclick = () => setCollapsed(!$("dock").classList.contains("collapsed"));
-setCollapsed(store.get("termCollapsed", false));
+setCollapsed(store.get("termCollapsed", false) === true);
 
 const HELP = [
   "ADVANCE steps [rate]   move the film; negative steps go back",
@@ -511,27 +513,37 @@ $("term-input").addEventListener("keydown", async e => {
   stick = true;
   if (line.toLowerCase() === "help") { for (const h of HELP) addLine("local", h); afterAppend(); return; }
   if (line.toLowerCase() === "clear") { $("term-clear").onclick(); return; }
-  try { await api("/api/console", {command: line}); pollLog(); }
+  try { await api("/api/console", {command: line}); }
   catch (err) {  // controller failures (502) already arrive through the log
     if (err.status !== 502) { addLine("error", err.message); afterAppend(); }
   }
+  pollLog();
+  loadSettings();  // a LIGHT command moves the slider
 });
 
-let logTimer;
+let logTimer, logBusy = false, logAgain = false;
 async function pollLog() {
+  if (logBusy) { logAgain = true; return; }  // one request at a time; run again right after
+  logBusy = true;
   clearTimeout(logTimer);
   let delay = document.hidden ? 3000 : 700;
   try {
     const r = await api("/api/log?since=" + since);
-    if (r.last_id < since) { since = 0; return pollLog(); }  // the scanner restarted
-    for (const e of r.entries) addLine(e.kind, e.text, e.t);
-    if (r.entries.length) afterAppend();
-    since = r.last_id;
+    if (r.last_id < since) { since = 0; delay = 0; }  // the scanner restarted
+    else {
+      const fresh = r.entries.filter(e => e.id > since);
+      for (const e of fresh) addLine(e.kind, e.text, e.t);
+      if (fresh.length) afterAppend();
+      since = Math.max(since, r.last_id);
+    }
     setConn(true);
   } catch (e) {
     setConn(false);
     delay = 3000;
+  } finally {
+    logBusy = false;
   }
+  if (logAgain) { logAgain = false; delay = 0; }
   logTimer = setTimeout(pollLog, delay);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { pollLog(); poll(); } });
