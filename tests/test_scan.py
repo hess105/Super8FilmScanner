@@ -191,3 +191,37 @@ def test_no_tmp_png_left_and_stray_tmp_is_not_counted(tmp_path):
     assert list(frames.glob("*.tmp.png")) == []
     (frames / "frame_00000007.tmp.png").write_bytes(b"x")
     assert next_frame_number(frames) == 3
+
+
+def test_events_for_start_nudge_flag_wind_and_finish(tmp_path):
+    film = FakeFilm()
+    events = []
+
+    def hook(sc):
+        if sc.frame_number == 2:
+            film.blank_remaining = 3
+
+    sc = scanner(film, tmp_path, settings(retries=2), on_progress=hook, on_event=events.append)
+    sc.run(max_frames=12)
+    assert events[0] == "scan started at frame 0"
+    assert any(e.startswith("target set") for e in events)
+    nudges = [e for e in events if e.startswith("nudge")]
+    assert nudges and "forward 15 steps" in nudges[0] and "px below target" in nudges[0]
+    assert any("frame 2 flagged" in e for e in events)
+    assert sum(e.startswith("wind ") and e.endswith(" steps") for e in events) == 1
+    assert events[-1] == "done: 12 frames, 1 flagged"
+    # no event per good frame: start, target, nudges, one flag, one wind, done
+    assert len(events) == 5 + len(nudges)
+
+
+def test_events_for_pause_resume_stop_and_error(tmp_path):
+    events = []
+    sc = scanner(FakeFilm(), tmp_path, settings(max_nudges=2), on_event=events.append)
+    sc.pause()
+    sc.resume()
+    sc.stop()
+    assert events == ["paused", "resumed", "stop requested"]
+    events.clear()
+    sc = scanner(FakeFilm(), tmp_path, settings(max_nudges=2), on_event=events.append)
+    sc.run(max_frames=5)
+    assert events[-1].startswith("error: ") and "nudges" in events[-1]

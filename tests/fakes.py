@@ -13,6 +13,7 @@ class FakeFilm:
         self.winds = []
         self.light = None
         self.blank_remaining = 0
+        self.commands = []
 
     # controller
     def advance(self, steps, rate=None):
@@ -23,6 +24,10 @@ class FakeFilm:
 
     def set_light(self, percent):
         self.light = percent
+
+    def command(self, line):
+        self.commands.append(line)
+        return "light=100" if line.strip().upper() == "STATUS" else ""
 
     # camera
     def capture(self):

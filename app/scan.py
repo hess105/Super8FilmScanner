@@ -25,11 +25,12 @@ def next_frame_number(frames_dir):
 
 
 class Scanner:
-    def __init__(self, controller, camera, settings, reel_dir, on_progress=None):
+    def __init__(self, controller, camera, settings, reel_dir, on_progress=None, on_event=None):
         self.controller = controller
         self.camera = camera
         self.settings = settings
         self.on_progress = on_progress
+        self.on_event = on_event or (lambda text: None)
         self.reel_dir = Path(reel_dir)
         self.frames_dir = self.reel_dir / "frames"
         self.frames_dir.mkdir(parents=True, exist_ok=True)
@@ -40,6 +41,7 @@ class Scanner:
         self.frame_number = next_frame_number(self.frames_dir)
         self.flagged = []
         self.target = None  # where the hole centre is placed in every saved frame
+        self.frame_size = None  # (width, height) of captured frames, once one is seen
         self._offset = (0.0, 0.0)
         self._stop = threading.Event()
         self._running = threading.Event()
@@ -50,14 +52,17 @@ class Scanner:
     def pause(self):
         self._running.clear()
         self.state = "paused"
+        self.on_event("paused")
 
     def resume(self):
         self.state = "running"
         self._running.set()
+        self.on_event("resumed")
 
     def stop(self):
         self._stop.set()
         self._running.set()
+        self.on_event("stop requested")
 
     # persistence -------------------------------------------------------
     def _load_meta(self):
@@ -122,6 +127,7 @@ class Scanner:
                             self.flagged.append(n)
                         write_errors.append("frame %d write failed: %s: %s" % (n, type(f.exception()).__name__, f.exception()))
 
+        self.on_event("scan started at frame %d" % start)
         try:
             self.controller.set_light(s.light_percent)
             while not self._stop.is_set():
@@ -135,10 +141,12 @@ class Scanner:
 
                 frame, centre = self._detect(self._grab())
                 h, w = frame.shape[:2]
+                self.frame_size = (w, h)
                 if centre is not None:
                     if self.target is None:
                         self.target = (centre[0], h / 2)
                         self._save_meta()
+                        self.on_event("target set at %d, %d" % self.target)
                     dy = self.target[1] - centre[1]
                     if abs(dy) > s.nudge_tolerance_frac * h:
                         nudges += 1
@@ -146,6 +154,8 @@ class Scanner:
                             raise ScanError("too many nudges without finding the frame")
                         steps = s.nudge_forward_steps if centre[1] > self.target[1] else s.nudge_reverse_steps
                         self.controller.advance(steps, s.nudge_rate)
+                        self.on_event("nudge %s %d steps (hole %d px %s target)" % (
+                            "forward" if steps > 0 else "back", abs(steps), abs(dy), "below" if dy < 0 else "above"))
                         continue
                     self._offset = (self.target[0] - centre[0], dy)
                     failures = 0
@@ -155,6 +165,7 @@ class Scanner:
                         raise ScanError("sprocket hole lost")
                     self.flagged.append(self.frame_number)  # keep the previous offset for this frame
                     self._save_meta()
+                    self.on_event("frame %d flagged: sprocket hole not found" % self.frame_number)
 
                 aligned = postprocess(shift_frame(frame, *self._offset), s)
                 self.preview = cv2.resize(aligned, (PREVIEW_WIDTH, int(PREVIEW_WIDTH * h / w)))
@@ -168,7 +179,9 @@ class Scanner:
                 to_wind += 1
                 nudges = 0
                 if to_wind >= s.frames_per_wind + 3:  # leave a little slack on the spool
-                    self.controller.wind(wind_steps(on_spool, s.frames_per_wind, s), s.wind_rate)
+                    steps = wind_steps(on_spool, s.frames_per_wind, s)
+                    self.controller.wind(steps, s.wind_rate)
+                    self.on_event("wind %d steps" % steps)
                     on_spool += s.frames_per_wind
                     to_wind -= s.frames_per_wind
                     self._save_meta()
@@ -194,3 +207,7 @@ class Scanner:
             except Exception as e:
                 self.error = "; ".join(([self.error] if self.error else []) + ["scan.json not saved: %s: %s" % (type(e).__name__, e)])
                 self.state = "error"
+            if self.state == "error":
+                self.on_event("error: %s" % self.error)
+            else:
+                self.on_event("done: %d frames, %d flagged" % (self.frame_number, len(self.flagged)))

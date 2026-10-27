@@ -101,3 +101,52 @@ def test_hardware_routes_409_while_scanning(tmp_path):
     while client.get("/api/status").json()["state"] not in ("done", "error") and time.time() < end:
         time.sleep(0.02)
     assert client.get("/api/status").json()["state"] == "done"
+
+
+def test_log_route(tmp_path):
+    client, _ = make_client(tmp_path)
+    client.post("/api/light", json={"percent": 40})
+    client.post("/api/light", json={"percent": 50})
+    log = client.get("/api/log").json()
+    assert [e["text"] for e in log["entries"]] == ["light set to 40%", "light set to 50%"]
+    newer = client.get("/api/log", params={"since": log["entries"][0]["id"]}).json()
+    assert [e["text"] for e in newer["entries"]] == ["light set to 50%"]
+    assert newer["last_id"] == log["last_id"]
+    assert client.get("/api/log", params={"since": -1}).status_code == 422
+
+
+def refuse_unknown(line):
+    raise ValueError("unknown command")  # what the real Controller.command does
+
+
+def test_console_route(tmp_path):
+    client, film = make_client(tmp_path)
+    r = client.post("/api/console", json={"command": "status"})
+    assert r.status_code == 200 and r.json() == {"reply": "light=100"}
+    assert film.commands == ["status"]
+    film.command = refuse_unknown
+    r = client.post("/api/console", json={"command": "reboot"})
+    assert r.status_code == 400 and r.json()["detail"] == "unknown command"
+    assert client.post("/api/console", json={"command": ""}).status_code == 422
+    assert client.post("/api/console", json={"command": "x" * 41}).status_code == 422
+
+
+def test_console_route_409_while_scanning(tmp_path):
+    film = FakeFilm()
+    gate = threading.Event()
+    orig = film.set_light
+
+    def gated_light(percent):
+        if percent != 0 and threading.current_thread().name != "MainThread":
+            gate.wait(10)
+        orig(percent)
+
+    film.set_light = gated_light
+    client = TestClient(create_app(ScanRunner(film, film, Settings(flip_vertical=False, output_dir=str(tmp_path)))))
+    try:
+        assert client.post("/api/scan/start", json={"name": "reel1"}).status_code == 200
+        assert client.post("/api/console", json={"command": "STATUS"}).status_code == 409
+    finally:
+        client.post("/api/scan/stop")
+        gate.set()
+

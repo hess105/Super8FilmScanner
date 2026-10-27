@@ -243,3 +243,121 @@ def test_test_frame_after_scan_turns_light_back_on(tmp_path):
     assert film.light == 0
     assert runner.test_frame()["detected"] is True
     assert film.light == runner.settings.light_percent
+
+
+def kinds_texts(runner):
+    return [(e["kind"], e["text"]) for e in runner.log_since(0)["entries"]]
+
+
+def test_log_since_has_scan_events(tmp_path):
+    _, runner = make_runner(tmp_path)
+    runner.start("reel1", max_frames=3)
+    wait_for(runner, {"done"})
+    log = runner.log_since(0)
+    texts = [e["text"] for e in log["entries"]]
+    assert texts[0] == "scan started at frame 0" and "done: 3 frames, 0 flagged" in texts
+    assert log["last_id"] == log["entries"][-1]["id"]
+    assert runner.log_since(log["last_id"]) == {"entries": [], "last_id": log["last_id"]}
+
+
+def test_ui_actions_are_logged(tmp_path):
+    _, runner = make_runner(tmp_path)
+    runner.set_light(40)
+    runner.set_exposure(2000, 1.0)
+    runner.test_frame()
+    assert kinds_texts(runner) == [
+        ("event", "light set to 40%"), ("event", "exposure 2000 us, gain 1.0"), ("event", "test frame: hole at 74, 380")]
+    _, runner = make_runner(tmp_path)
+    runner.camera.blank_remaining = 1
+    runner.test_frame()
+    assert kinds_texts(runner) == [("event", "test frame: hole not found")]
+
+
+def test_console_returns_reply_and_logs_traffic(tmp_path):
+    from app.console import CommandLog
+    from app.controller import Controller
+    from test_controller import FakePort
+
+    log = CommandLog()
+    controller = Controller(FakePort(["OK light=100"]), on_traffic=log.add)
+    runner = ScanRunner(controller, FakeFilm(), Settings(flip_vertical=False, output_dir=str(tmp_path)), log=log)
+    assert runner.log is log
+    assert runner.console("status") == {"reply": "light=100"}
+    assert kinds_texts(runner) == [("cmd", "STATUS"), ("reply", "OK light=100")]
+
+
+def test_console_errors(tmp_path):
+    from app.controller import ControllerError
+
+    film, runner = make_runner(tmp_path)
+
+    def refuse(line):
+        raise ValueError("unknown command")  # what the real Controller.command does
+
+    film.command = refuse
+    with pytest.raises(RunnerError) as e:
+        runner.console("reboot")
+    assert e.value.status == 400 and str(e.value) == "unknown command"
+
+    def broken(line):
+        raise ControllerError("no reply to 'STATUS' (timeout)")
+
+    film.command = broken
+    with pytest.raises(RunnerError) as e:
+        runner.console("STATUS")
+    assert e.value.status == 502 and "timeout" in str(e.value)
+
+
+def test_console_refused_while_scanning(tmp_path):
+    film, runner = gated_runner(tmp_path)
+    runner.start("reel1")
+    try:
+        with pytest.raises(RunnerError) as e:
+            runner.console("STATUS")
+        assert e.value.status == 409
+        assert film.commands == []
+    finally:
+        film.gate.set()
+        runner.stop()
+        wait_for(runner, {"done"})
+
+
+def test_status_new_keys(tmp_path):
+    _, runner = make_runner(tmp_path)
+    st = runner.status()
+    assert st["flagged_frames"] == [] and st["elapsed_s"] == 0 and st["rate_fps"] == 0
+    assert st["disk_free_gb"] > 0 and st["target_frac"] is None
+    runner.start("reel1", max_frames=3)
+    wait_for(runner, {"done"})
+    st = runner.status()
+    assert st["flagged_frames"] == [] and st["elapsed_s"] > 0 and st["rate_fps"] == 0
+    fx, fy = st["target_frac"]
+    assert 0 < fx < 1 and fy == pytest.approx(0.5)
+    assert st["disk_free_gb"] > 0
+    assert {"state", "name", "frame", "flagged", "error"} <= set(st)
+
+
+def test_status_flagged_frames_and_rate(tmp_path, monkeypatch):
+    import app.runner
+
+    film, runner = make_runner(tmp_path)
+    seen = {}
+
+    def hook(sc):
+        if sc.frame_number == 2:
+            film.blank_remaining = 3
+        if sc.frame_number == 5:
+            seen.update(runner.status())
+
+    class HookedScanner(Scanner):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            runner_hook = self.on_progress
+            self.on_progress = lambda sc: (runner_hook(sc), hook(sc))
+
+    runner.settings.retries = 2
+    monkeypatch.setattr(app.runner, "Scanner", HookedScanner)
+    runner.start("reel1", max_frames=6)
+    wait_for(runner, {"done"})
+    assert runner.status()["flagged_frames"] == [2]
+    assert seen["rate_fps"] > 0

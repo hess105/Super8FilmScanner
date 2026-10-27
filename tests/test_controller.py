@@ -51,3 +51,39 @@ def test_silence_raises_timeout():
 def test_unexpected_reply_raises():
     with pytest.raises(ControllerError, match="unexpected"):
         Controller(FakePort(["hello"])).status()
+
+
+def traffic_controller(replies):
+    seen = []
+    return Controller(FakePort(replies), on_traffic=lambda kind, text: seen.append((kind, text))), seen
+
+
+def test_traffic_hook_sees_command_then_reply():
+    c, seen = traffic_controller(["OK light=50"])
+    c.status()
+    assert seen == [("cmd", "STATUS"), ("reply", "OK light=50")]
+
+
+@pytest.mark.parametrize("replies", [["ERR bad"], [], ["hello"]])
+def test_traffic_hook_sees_error_before_raise(replies):
+    c, seen = traffic_controller(replies)
+    with pytest.raises(ControllerError) as e:
+        c.status()
+    assert seen[0] == ("cmd", "STATUS")
+    assert seen[-1] == ("error", str(e.value))
+
+
+def test_command_sends_allowed_lines():
+    port = FakePort(["OK light=100", "OK"])
+    c = Controller(port)
+    assert c.command("  status ") == "light=100"
+    assert c.command("light 30") == ""
+    assert port.written == ["STATUS\n", "LIGHT 30\n"]
+
+
+@pytest.mark.parametrize("line", ["reboot", "", "   ", "STATUS\nLIGHT 0", "\n", "LIGHT " + "1" * 35])
+def test_command_rejects_bad_lines(line):
+    port = FakePort(["OK"])
+    with pytest.raises(ValueError, match="unknown command"):
+        Controller(port).command(line)
+    assert port.written == []

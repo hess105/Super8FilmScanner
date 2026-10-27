@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,10 @@ class LightRequest(BaseModel):
 class ExposureRequest(BaseModel):
     exposure_us: int = Field(gt=0)
     gain: float = Field(ge=1.0, le=16.0)
+
+
+class ConsoleRequest(BaseModel):
+    command: str = Field(min_length=1, max_length=40)
 
 
 def create_app(runner):
@@ -81,5 +85,13 @@ def create_app(runner):
     def exposure(req: ExposureRequest):
         call(runner.set_exposure, req.exposure_us, req.gain)
         return {"exposure_us": req.exposure_us, "gain": req.gain}
+
+    @app.get("/api/log")
+    def log(since: int = Query(0, ge=0)):
+        return runner.log_since(since)
+
+    @app.post("/api/console")
+    def console(req: ConsoleRequest):
+        return call(runner.console, req.command)
 
     return app
