@@ -72,7 +72,7 @@ Full schematics, pin table and bring-up checks: [wiring](wiring.md).
 
 Edit `scanner.json` (keys as in `app/config.py`) and restart the app after each change.
 
-1. Light and detection: load a reel with the gate lit. Move the light slider; the light should follow. Press "Test frame". If the hole is not found, adjust `sprocket_threshold` (default 230) or `sprocket_strip_frac` (default 0.16).
+1. Light and detection: load a reel with the gate lit. Move the light slider; the light should follow (with the RCD-24 driver the slider direction may be inverted and out of range until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6). Press "Test frame". If the hole is not found, adjust `sprocket_threshold` (default 230) or `sprocket_strip_frac` (default 0.16).
 2. `exposure_us` and `gain`: set so the picture is bright but the sprocket hole is the brightest area and the film is not clipped. Use gain 1.0 where possible. White balance is locked at start with the empty gate lit.
 3. `flip_vertical`: if the film nudges the wrong way (the hole moves away from the target), set it the other way.
 4. `steps_per_frame` (default 164) and `nudge_*`: scan about 20 frames and watch for nudges. Adjust `steps_per_frame` until nudges are rare. Tune `nudge_forward_steps`, `nudge_reverse_steps` and `nudge_rate` if corrections overshoot or are slow.

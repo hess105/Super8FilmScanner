@@ -25,13 +25,15 @@ This describes the code as committed on `feature/scanner-refinement`. The design
   film stepper      take-up stepper
 ```
 
+The LED driver link carries 20 kHz PWM in the current firmware. Caveat: with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6.
+
 The Pi never drives motors or the LED directly. It sends one text command per line and waits for the reply (`OK` or `ERR ...`) before sending the next.
 
 ## 2. Components
 
 | Module | Responsibility | Depends on |
 |---|---|---|
-| `app/__main__.py` | Entrypoint: load settings, create the `CommandLog`, open controller (traffic goes to the log) and camera, lock white balance, start uvicorn on `0.0.0.0:8000` (`--config`, `--port`); on exit it stops the scan, turns the light off and closes the controller and camera | `config`, `controller`, `camera`, `runner`, `server` |
+| `app/__main__.py` | Entrypoint: load settings, create the `CommandLog`, open controller (traffic goes to the log) and camera, lock white balance, start uvicorn on `0.0.0.0:8000` (`--config`, `--port`); on exit it stops the scan, turns the light off (caveat: with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6) and closes the controller and camera | `config`, `controller`, `camera`, `runner`, `server` |
 | `app/config.py` | `Settings` dataclass with defaults; `load` ignores unknown keys, `save` writes JSON | stdlib |
 | `app/controller.py` | Serial wrapper: `advance`, `wind`, `set_light`, `status`, `command` (operator line from the terminal); blocks until the reply; raises `ControllerError`; reports each command, reply and error to `on_traffic` | `pyserial` (imported in `open`) |
 | `app/console.py` | `CommandLog`: thread-safe ring of the last 500 entries (`cmd`, `reply`, `event`, `error`) with ids that never repeat | stdlib |
@@ -86,7 +88,7 @@ Before the loop, the light is set to `light_percent`. Each pass:
 9. Wind: after `frames_per_wind + 3` frames are waiting, wind `frames_per_wind` frames of film onto the spool (`wind_steps` at `wind_rate`), leaving a little slack, and save `scan.json`.
 10. Advance one frame (`steps_per_frame` at `advance_rate`) and report progress.
 
-When the loop ends, pending writes finish, the light is turned off, and `scan.json` is saved. State is `done` or `error`. While that happens the runner reports `finishing`, never `done`, so `done` means the frames and `scan.json` are on disk.
+When the loop ends, pending writes finish, the light is turned off (caveat: with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6), and `scan.json` is saved. State is `done` or `error`. While that happens the runner reports `finishing`, never `done`, so `done` means the frames and `scan.json` are on disk.
 
 ## 5. Alignment
 
@@ -161,4 +163,4 @@ Settings are read from the JSON file at start. The web UI changes light and expo
 | `scan.json` cannot be saved | Added to the error message, state `error`. |
 | Action while a scan runs (preview grab, test frame, light, exposure, console command, second start) | `RunnerError`, HTTP 409. A bad reel name or an unknown console command gives HTTP 400; a controller failure on a console command gives 502. |
 
-In every ending the Scanner tries to turn the light off; a failure there is ignored because the controller may be what failed.
+In every ending the Scanner tries to turn the light off; a failure there is ignored because the controller may be what failed. Caveat: with the RCD-24 driver, `LIGHT 0` is full on until the firmware item in `docs/ROADMAP.md` lands; see `wiring.md` section 6.
