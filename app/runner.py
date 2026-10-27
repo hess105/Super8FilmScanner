@@ -6,7 +6,6 @@ import cv2
 
 from .align import detect_sprocket
 from .scan import PREVIEW_WIDTH, Scanner
-from .video import build_mp4
 
 NAME_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
@@ -18,15 +17,13 @@ class RunnerError(Exception):
 
 
 class ScanRunner:
-    def __init__(self, controller, camera, settings, build_video=build_mp4):
+    def __init__(self, controller, camera, settings):
         self.controller = controller
         self.camera = camera
         self.settings = settings
-        self._build_video = build_video
         self._scanner = None
         self._thread = None
         self._name = None
-        self._video = None
         self._test_preview = None
         self._lock = threading.Lock()  # idle check + action must be atomic
 
@@ -51,13 +48,6 @@ class ScanRunner:
     # scan control ------------------------------------------------------
     def _run(self, max_frames):
         self._scanner.run(max_frames)
-        if self._scanner.state == "done" and self._scanner.frame_number > 0:
-            self._video = "encoding"
-            try:
-                self._build_video(Path(self.settings.output_dir) / self._name, self.settings.fps)
-                self._video = "done"
-            except Exception as e:  # ffmpeg missing or failed; frames are still saved
-                self._video = "error: %s" % e
 
     def start(self, name, max_frames=None):
         if not isinstance(name, str) or not NAME_RE.fullmatch(name):
@@ -65,7 +55,6 @@ class ScanRunner:
         with self._lock:
             self._require_idle()
             self._name = name
-            self._video = None
             self._test_preview = None
             self._scanner = Scanner(self.controller, self.camera, self.settings, Path(self.settings.output_dir) / name)
             self._thread = threading.Thread(target=self._run, args=(max_frames,), daemon=True)
@@ -92,11 +81,11 @@ class ScanRunner:
     def status(self):
         sc = self._scanner
         if sc is None:
-            return {"state": "idle", "name": None, "frame": 0, "flagged": 0, "error": None, "video": None}
-        # Scanner sets "done" before its writes drain and the video is built; never report done while the thread lives
-        state = "encoding" if self._busy() and sc.state == "done" else sc.state
+            return {"state": "idle", "name": None, "frame": 0, "flagged": 0, "error": None}
+        # Scanner sets "done" before its writes drain, the light goes off and scan.json is saved; never report done while the thread lives
+        state = "finishing" if self._busy() and sc.state == "done" else sc.state
         return {"state": state, "name": self._name, "frame": sc.frame_number, "flagged": len(sc.flagged),
-                "error": sc.error, "video": self._video}
+                "error": sc.error}
 
     # hardware access (only while idle) ----------------------------------
     def preview_jpeg(self):

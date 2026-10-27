@@ -13,7 +13,7 @@ def make_client(tmp_path):
     film = FakeFilm()
     film.set_exposure = lambda us, gain: None
     settings = Settings(flip_vertical=False, output_dir=str(tmp_path))
-    runner = ScanRunner(film, film, settings, build_video=lambda d, fps: None)
+    runner = ScanRunner(film, film, settings)
     return TestClient(create_app(runner)), film
 
 
@@ -87,7 +87,7 @@ def test_hardware_routes_409_while_scanning(tmp_path):
     film.set_light = gated_light
     film.set_exposure = lambda us, gain: None
     settings = Settings(flip_vertical=False, output_dir=str(tmp_path))
-    client = TestClient(create_app(ScanRunner(film, film, settings, build_video=lambda d, fps: None)))
+    client = TestClient(create_app(ScanRunner(film, film, settings)))
     try:
         assert client.post("/api/scan/start", json={"name": "reel1"}).status_code == 200
         assert client.post("/api/light", json={"percent": 10}).status_code == 409

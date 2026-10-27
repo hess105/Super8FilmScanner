@@ -43,7 +43,6 @@ class Settings:
     max_consecutive_failures: int = 5
     # output
     png_compression: int = 2
-    fps: int = 18
     denoise: bool = False
     resize_to: Optional[Tuple[int, int]] = None
 

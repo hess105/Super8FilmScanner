@@ -66,7 +66,7 @@ async function poll() {
   try {
     const s = await api("/api/status");
     $("status").textContent = s.state + (s.name ? " | " + s.name : "") + " | frames " + s.frame + " | flagged " + s.flagged +
-      (s.video ? " | video " + s.video : "") + (s.error ? " | " + s.error : "");
+      (s.error ? " | " + s.error : "");
     $("status").className = s.error ? "err" : "";
     if (s.state === "running" || s.state === "paused") refreshPreview();
   } catch (e) { $("status").textContent = "cannot reach scanner"; }

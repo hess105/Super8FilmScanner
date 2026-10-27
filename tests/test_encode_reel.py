@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.video import ffmpeg_command
+from encode_reel import ffmpeg_command
 
 
 def test_command_reads_the_frame_sequence_and_writes_the_mp4():
