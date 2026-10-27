@@ -2030,6 +2030,63 @@ git add app/__main__.py README.md && git commit -m "feat(app): entrypoint and RE
 
 ---
 
+### Task 15: Design documents, project timeline and next steps
+
+**Files:**
+- Create: `docs/design/architecture.md`, `docs/design/hardware.md`, `docs/ROADMAP.md`
+- Modify: `README.md` (add links)
+
+**Interfaces:**
+- Consumes: the finished code from Tasks 1-14 (read `app/`, `firmware/`, `tests/`), the spec `docs/superpowers/specs/2026-10-27-scanner-refinement-design.md`, and the file of deferred review findings the controller names in the dispatch.
+- Produces: documentation only. Nothing in `app/` or `firmware/` changes. Every statement about the code must match the code as committed; read the files rather than the plan.
+
+This task is documentation. It has no pytest test; it is checked by the link and fact checks in Step 5.
+
+- [ ] **Step 1: Write `docs/design/architecture.md`**
+
+Sections, in this order: (1) Overview with an ASCII diagram of Pi (web UI, app) to RP2040 (USB serial) to two TMC2209 steppers and the LED, with the HQ camera on the Pi; (2) a components table, one row per module in `app/` and `firmware/` (module, responsibility, depends on); (3) the controller protocol as a table (command, reply, example) taken from `firmware/protocol.py`; (4) the scan loop as a numbered walkthrough taken from `app/scan.py` (capture, detect with retries, nudge, shift, postprocess, write, wind, advance); (5) alignment: lossless integer shift, target set from the first detection, no crop; (6) output layout of a reel folder (`frames/`, `reel.mp4`, `scan.json`); (7) the calibration-critical settings with their defaults, read from `app/config.py`; (8) an error handling table (sprocket not found, sprocket lost, too many nudges, controller silent or ERR, write failure) with what the app does for each, taken from `app/scan.py` and `app/runner.py`.
+
+- [ ] **Step 2: Write `docs/design/hardware.md`**
+
+Sections: (1) bill of materials: the cost table from the spec (Pi 4 2 GB 45, HQ camera 55 used or about 75-80 new, microscope lens 30, 2x NEMA 17 pancake 20, controller 20, LED/driver/diffuser 15, PSU/buck/cables/microSD 25, printed parts and hardware 20, total about $230), with the note that prices are estimates and the enlarger-lens upgrade adds about $35-135; (2) the pin map copied from `firmware/pins.py`; (3) wiring overview in words and a table: Pi to Pico by USB, Pico to TMC2209 STEP/DIR/EN for film and reel, LED PWM to the LED driver, 12 V supply with a buck converter to 5 V for the Pi; (4) requirements for the separate hardware plans: enclosure and film path (projector layout, 3" to 7" reels, flat gate wide enough to show the sprocket hole and edges, no moving parts on the image side, camera mount for the C-mount microscope lens with focus/zoom lock, printed case with power inlet, USB storage and Ethernet on the back), controller PCB (RP2040, 2x TMC2209, one LED driver channel, one sensor input, 12 V in with buck to 5 V, two-layer, prototype on perfboard first), lighting (95+ CRI LED, constant-current driver with PWM dimming, opal diffuser); (5) a calibration procedure for `steps_per_frame`, `nudge_*`, `sprocket_threshold`, `exposure_us`/`gain`, `reel_steps_per_rev` and `flip_vertical`, matching Task 14 step 4.
+
+- [ ] **Step 3: Write `docs/ROADMAP.md`**
+
+Sections: (1) Status: what is built and tested (firmware protocol and motion, app modules, web UI) and what has not run on hardware (the Pico main loop, picamera2 wrapper, the whole machine). (2) Timeline, as this table (state under it that durations are estimates for one person working about 8-10 hours a week and shift with parts delivery):
+
+| Phase | Weeks | Goal | Done when |
+|---|---|---|---|
+| 0. Software and firmware | done | App and firmware written and tested on a PC | tests pass on the branch |
+| 1. Bench bring-up | 1-2 | Order parts (~$230). Flash the Pico on perfboard with 2 TMC2209 modules, drive both motors and the LED. Set up Pi OS, run the camera check, start the web app | web UI shows a live preview, light slider works, "Test frame" finds the sprocket on a loose piece of film |
+| 2. Mechanics | 2-5 | Update the FreeCAD parts for the new film path, gate, camera mount and reel mounts; print and iterate | film advances one frame cleanly through the gate without scratching |
+| 3. Image quality | 4-6 | Lens focus and zoom, diffuser and LED, exposure, white balance; try an enlarger lens if the microscope lens is soft | frames are sharp across the whole picture and evenly lit |
+| 4. First full reel | 6-7 | Calibrate `steps_per_frame` and spool winding; scan a 3-minute reel | 3,000+ aligned frames and a playable MP4 with few or no flagged frames |
+| 5. Controller PCB | 7-10 | KiCad design, order from a PCB fab, assemble, flash, replace the perfboard | one scan completes on the PCB |
+| 6. Enclosure and release | 10-12 | Finish the printed case, write build and user docs, publish the build files | someone else can build and run it from the docs |
+
+(3) "To bring up what exists": an ordered checklist: order the parts; set up Pi OS Bookworm and install per the README; flash the Pico (`mpremote` commands from Task 4 step 4); check serial replies; check the camera; run `python -m app`; first test frame; calibrate; short 50-frame scan; full reel. (4) Known issues and follow-ups: every deferred finding from the file the controller names, each as a checkbox with the file and a one-line fix. (5) Before selling anything: GPL-3.0 means source must be offered with each unit and the licence stays GPL, so a different licence needs a clean-room rewrite or permission from all authors; sourcing a new (not used) lens; CE/FCC certification; the web UI has no login; price and support plan. (6) Open questions from the spec: Pi 4 vs Pi 5 speed, microscope lens sharpness and availability.
+
+- [ ] **Step 4: Link the documents from the README**
+
+In `README.md`, directly under the "New web app (work in progress)" section's last line, add:
+
+```markdown
+Design notes: [architecture](docs/design/architecture.md), [hardware](docs/design/hardware.md). Project plan and next steps: [roadmap](docs/ROADMAP.md).
+```
+
+- [ ] **Step 5: Check the facts and links**
+
+Run: `grep -o '](docs/[^)]*)' README.md | tr -d '()]' | sed 's/^docs/docs/' | xargs ls`
+Expected: all three files listed, no "No such file". Then for each protocol command, pin number and default setting you quoted, confirm it against `firmware/protocol.py`, `firmware/pins.py` and `app/config.py` (for example `grep -n "steps_per_frame" app/config.py`). Fix any mismatch in the docs.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add docs/design docs/ROADMAP.md README.md && git commit -m "docs: architecture, hardware design, roadmap and next steps"
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage**
