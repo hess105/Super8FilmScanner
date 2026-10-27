@@ -2,7 +2,7 @@
 
 Links to the official documents for the parts in the bill of materials (`../design/hardware.md`). Checked 2026-10-27 with `curl -sIL` (HEAD, then a ranged GET where noted), default user agent, from the author's machine.
 
-Status key: **200** = curl returned 200 after redirects. **403 (curl)** = the site's bot protection rejects curl; the page was opened another way and loads, but curl did not return 200. **timeout** = curl got no reply in 30 s on HTTP/1.1 and HTTP/2; not verified.
+Status key: **200** = curl returned 200 after redirects. **403 (curl)** = 403 to curl; not otherwise verified (unless a row says it loaded in a fetch tool). **timeout** = curl got no reply in 30 s on HTTP/1.1 and HTTP/2; not verified.
 
 ## Parts fixed by the design
 
