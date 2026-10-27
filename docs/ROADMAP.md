@@ -4,12 +4,12 @@
 
 Built and tested on a PC (fake controller and fake camera, no hardware):
 - Firmware protocol parser and motion profile (`firmware/protocol.py`, `firmware/motion.py`).
-- App modules: settings, controller wrapper, sprocket detection and alignment, post-processing, spool take-up maths, scan loop, ffmpeg video, scan runner, web server and page.
+- App modules: settings, controller wrapper, sprocket detection and alignment, post-processing, spool take-up maths, scan loop, scan runner, web server and page.
 
 Not run on hardware yet:
 - The Pico main loop (`firmware/main.py`): flashing and serial check.
 - The picamera2 wrapper (`app/camera.py`): real capture.
-- The whole machine end to end, a real ffmpeg encode, and the web page in a browser.
+- The whole machine end to end, and the web page in a browser.
 
 ## 2. Timeline
 
@@ -35,7 +35,7 @@ These durations are estimates for one person working about 8-10 hours a week, an
 - [ ] Run `python -m app --config scanner.json`.
 - [ ] First "Test frame": the sprocket hole is found.
 - [ ] Calibrate (procedure in `docs/design/hardware.md`).
-- [ ] Short 50-frame scan; check frames, alignment and `reel.mp4`.
+- [ ] Short 50-frame scan; check frames and alignment.
 - [ ] Full reel.
 
 ## 4. Known issues and follow-ups
@@ -70,13 +70,11 @@ Deferred review findings, none blocking. Each is a checkbox: file, one-line fix.
 - [ ] `app/scan.py`: `frame_number` and `scan.json` frames count a lost write frame, so resume can reuse its number; resume from `next_frame_number`.
 - [ ] `app/scan.py`: mid-run saves record a stale state after a hard crash and can leave a `.tmp` file; clean the `.tmp` on load.
 - [ ] `app/scan.py`: a write failure is noticed one loop late; reap after submit.
-- [ ] `tests/test_scan.py`: add flag-time and wind-time save tests; make the "encoding" window not timing dependent.
+- [ ] `tests/test_scan.py`: add flag-time and wind-time save tests; make the "finishing" window not timing dependent.
 - [ ] `app/runner.py`: `pause()`/`resume()` check-then-act can overwrite `done`/`error` with `paused`; take the scanner state under a lock. Same cause: `status()` reads several fields non-atomically.
 - [ ] `app/runner.py`: `Scanner(...)` mkdir `OSError` escapes `start()`; map it to `RunnerError`.
 - [ ] `app/runner.py`: the test-frame preview stays cached after `set_light`/`set_exposure`; clear `_test_preview` there.
-- [ ] `app/runner.py`: a video build failure shows only in `video` and state stays `done`; surface it in `error`.
 - [ ] `app/runner.py`: the light turns on while paused-before-run; set the light after the pause check.
-- [ ] `app/video.py`: ffmpeg missing raises `FileNotFoundError` (the runner catches `Exception`); raise a clear error. `tests/test_video.py` does not assert `-start_number` or `-vf`.
 
 ### Web server and page
 - [ ] `app/static/index.html`: success text shows in the error colour; use a separate class.
@@ -97,7 +95,7 @@ Deferred review findings, none blocking. Each is a checkbox: file, one-line fix.
 - [ ] Pico flashing and serial check (Task 4).
 - [ ] Pi camera capture (Task 9).
 - [ ] End-to-end check on the machine (Task 14).
-- [ ] A real ffmpeg encode.
+- [ ] Encode a first MP4 on a desktop with `tools/encode_reel.py` from a test scan.
 - [ ] The web page in a browser.
 
 Process note: commit trailers name the model that wrote each commit (Haiku 5.5 or Sonnet 5.5). The plan text for Tasks 10, 12 and 13 is out of date, because the code changed in fix rounds.

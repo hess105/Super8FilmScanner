@@ -5,14 +5,14 @@ Status: Draft for review
 
 ## Goal
 
-Turn the current prototype (3D-printed frame, Pi, Marlin/RAMPS-style board, loose scripts) into a more complete, cleaner device: an enclosed scanner with a web app that saves aligned, uncropped frames and a ready-made MP4. Keep cost low and parts modern and accessible.
+Turn the current prototype (3D-printed frame, Pi, Marlin/RAMPS-style board, loose scripts) into a more complete, cleaner device: an enclosed scanner with a web app that saves aligned, uncropped frames and nothing else; MP4 is encoded on a computer. Keep cost low and parts modern and accessible.
 
 ## Decisions
 
 | Topic | Decision |
 |---|---|
 | Scope | Enclosure and mechanics, electronics, software app, lighting and image quality |
-| Output | Aligned, uncropped frame sequence (PNG or JPEG) plus an auto-built MP4 at 18 fps |
+| Output | Aligned, uncropped frame sequence only (PNG or JPEG); MP4 is encoded on a computer with `tools/encode_reel.py`. User decision: the device does not encode video |
 | Look | Denoise and resize are off by default (opt-in). Sprocket hole and film edges stay in frame |
 | Interface | Web UI served by the Pi over Wi-Fi/LAN. No built-in screen in v1 |
 | Controller | Small custom RP2040 board with 2x TMC2209, LED driver, sensor input. Prototype first on off-the-shelf modules |
@@ -26,7 +26,7 @@ Turn the current prototype (3D-printed frame, Pi, Marlin/RAMPS-style board, loos
 Three layers:
 
 1. **Controller board (RP2040)** drives two steppers and the LED. It takes plain serial commands from the Pi and replies when each move completes.
-2. **Scanner app (Pi)** is one Python service: camera, alignment, scan loop, file output, ffmpeg, web server.
+2. **Scanner app (Pi)** is one Python service: camera, alignment, scan loop, file output, web server.
 3. **Web UI (browser)** has live preview, exposure and light controls, Start/Stop/Pause, progress, and a "Test frame" button that captures and aligns one frame.
 
 Repo layout: `app/`, `firmware/`, `hardware/` (CAD and PCB), `legacy/` (existing scripts, kept).
@@ -62,7 +62,7 @@ Modules in `app/`:
 
 **Scan loop details (from the legacy script).** After each advance, if the hole is more than 3% of the image height from the target row, the film is nudged (forward 15 steps or back 5) and the frame recaptured, up to 25 nudges, then the scan stops with an error. The software shift only corrects the small residual. The take-up spool is wound after every 11 frames, by the angle the legacy `calculateAngleForSpoolTakeUp` computes (`app/takeup.py`). Five frames in a row without a detected hole stops the scan with a "sprocket hole lost" error. Firmware is MicroPython, with the protocol parser and motion profile in pure Python so they are tested on a PC.
 
-**Output per scan.** A folder per reel: `frames/frame_00000001.png`, `reel.mp4` (ffmpeg, 18 fps), `scan.json` (settings, frame count, flagged frames).
+**Output per scan.** A folder per reel: `frames/frame_00000001.png`, `scan.json` (settings, frame count, flagged frames).
 
 **Errors**
 - Sprocket not found: retry capture a few times, then reuse the previous offset, flag the frame, and continue.

@@ -39,8 +39,7 @@ The Pi never drives motors or the LED directly. It sends one text command per li
 | `app/postprocess.py` | Opt-in denoise and resize (both off by default) | OpenCV |
 | `app/takeup.py` | `wind_steps`: motor steps to wind N frames onto the spool given how much is already on it | stdlib |
 | `app/scan.py` | `Scanner`: the scan loop, pause/resume/stop, background PNG writes, `scan.json` persistence | `align`, `postprocess`, `takeup`, OpenCV |
-| `app/video.py` | `build_mp4`: ffmpeg encode of `frames/` into `reel.mp4` | `ffmpeg` binary |
-| `app/runner.py` | `ScanRunner`: runs a `Scanner` on a thread, validates the reel name, builds the video afterwards, serves preview/test-frame/light/exposure only while idle | `scan`, `align`, `video` |
+| `app/runner.py` | `ScanRunner`: runs a `Scanner` on a thread, validates the reel name, serves preview/test-frame/light/exposure only while idle | `scan`, `align` |
 | `app/server.py` | FastAPI routes and the page `app/static/index.html` | `runner` |
 | `firmware/protocol.py` | `parse_command`, `format_ok`, `format_err`; pure Python, tested on a PC | none |
 | `firmware/motion.py` | `step_delays_us`: trapezoid speed profile, pure Python | none |
@@ -78,7 +77,7 @@ Before the loop, the light is set to `light_percent`. Each pass:
 9. Wind: after `frames_per_wind + 3` frames are waiting, wind `frames_per_wind` frames of film onto the spool (`wind_steps` at `wind_rate`), leaving a little slack, and save `scan.json`.
 10. Advance one frame (`steps_per_frame` at `advance_rate`) and report progress.
 
-When the loop ends, pending writes finish, the light is turned off, and `scan.json` is saved. State is `done` or `error`. `ScanRunner` then builds `reel.mp4` if the state is `done`.
+When the loop ends, pending writes finish, the light is turned off, and `scan.json` is saved. State is `done` or `error`. While that happens the runner reports `finishing`, never `done`, so `done` means the frames and `scan.json` are on disk.
 
 ## 5. Alignment
 
@@ -89,11 +88,19 @@ The target is set once, from the first frame where the hole is detected (its x p
 ```
 scans/<reel name>/
   frames/frame_00000000.png, frame_00000001.png, ...
-  reel.mp4        (ffmpeg, libx264, crf 15, yuv420p, at `fps`, default 18)
   scan.json       (settings, target, frame count, flagged frames, state)
 ```
 
-The reel name is 1-64 letters, digits, `-` or `_`. Starting a scan with an existing name continues from the next unused frame number. `scan.json` is written to a temporary file and renamed, so it is never half written. Odd image dimensions are rounded down to even for the MP4 (`yuv420p` needs even sizes).
+The reel name is 1-64 letters, digits, `-` or `_`. Starting a scan with an existing name continues from the next unused frame number. `scan.json` is written to a temporary file and renamed, so it is never half written.
+## 6a. Encoding on a computer
+
+The device only collects frames; they are the master. Encode them on a desktop with `tools/encode_reel.py` (needs `ffmpeg` installed there), or by hand:
+
+```
+ffmpeg -framerate 18 -start_number 0 -i frames/frame_%08d.png -c:v libx264 -preset slower -crf 15 -pix_fmt yuv420p reel.mp4
+```
+
+Use 18 fps for Super 8 sound-speed playback (24 fps silent speed is not used here). The PNGs are 4056x3040. An odd frame size needs `-vf scale=trunc(iw/2)*2:trunc(ih/2)*2`, and a smaller copy for sharing can use `-vf scale=-2:1080`. DaVinci Resolve can also import the PNG sequence.
 
 ## 7. Calibration-critical settings (defaults from `app/config.py`)
 
@@ -133,7 +140,6 @@ Settings are read from the JSON file at start. The web UI changes light and expo
 | Controller silent or `ERR` | `ControllerError` ("no reply ... (timeout)" after `serial_timeout_s`, or the `ERR` text, or an unexpected reply). Caught by the loop: state `error`, message in `status`. Frames already written stay on disk and the reel can be continued by starting with the same name. |
 | Write failure | The failed frame number is flagged. The loop notices on the next pass (or at the end), raises "frame write failed", and the error text lists each failure. |
 | `scan.json` cannot be saved | Added to the error message, state `error`. |
-| Video build fails (ffmpeg missing or failing) | Frames are kept; `status.video` shows `error: ...`. |
 | Action while a scan runs (preview grab, test frame, light, exposure, second start) | `RunnerError`, HTTP 409. A bad reel name gives HTTP 400. |
 
 In every ending the Scanner tries to turn the light off; a failure there is ignored because the controller may be what failed.

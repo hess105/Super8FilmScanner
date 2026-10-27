@@ -12,12 +12,15 @@ The scripts in `legacy/` are the original Marlin-based workflow, kept for refere
 
 On Raspberry Pi OS (Bookworm):
 
-    sudo apt install -y python3-picamera2 python3-opencv python3-numpy ffmpeg
+    sudo apt install -y python3-picamera2 python3-opencv python3-numpy
     python3 -m venv --system-site-packages .venv && .venv/bin/pip install -r requirements.txt
     .venv/bin/python -m app --config scanner.json
 
 Open `http://<pi-hostname>.local:8000`. There is no login, so only run it on a network you trust.
-Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `reel.mp4` and `scan.json`.
+Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `scan.json`. The device does not make a video: encode the frames on a desktop with `tools/encode_reel.py` (needs `ffmpeg` on that computer) or by hand, see "Encoding on a computer" in `docs/design/architecture.md`:
+
+    ffmpeg -framerate 18 -start_number 0 -i frames/frame_%08d.png -c:v libx264 -preset slower -crf 15 -pix_fmt yuv420p reel.mp4
+
 A 50 ft reel is about 3,600 frames of about 20 MB PNGs, so roughly 70-80 GB: check free disk space before a scan.
 Hardware numbers (steps per frame, motor rates, sprocket threshold) live in `scanner.json`; see `app/config.py` for every setting and its default.
 

@@ -74,4 +74,4 @@ Edit `scanner.json` (keys as in `app/config.py`) and restart the app after each 
 3. `flip_vertical`: if the film nudges the wrong way (the hole moves away from the target), set it the other way.
 4. `steps_per_frame` (default 164) and `nudge_*`: scan about 20 frames and watch for nudges. Adjust `steps_per_frame` until nudges are rare. Tune `nudge_forward_steps`, `nudge_reverse_steps` and `nudge_rate` if corrections overshoot or are slow.
 5. `reel_steps_per_rev` (default 3200): set to the motor's steps per revolution including microstepping and any gearing. Check that the take-up spool keeps the film taut but not pulled over a full reel.
-6. Check run: scan about 50 frames. Frames must be full size, the hole in the same position in every frame, nothing cropped, `reel.mp4` playing at 18 fps, and grain intact (denoise is off by default).
+6. Check run: scan about 50 frames. Frames must be full size, the hole in the same position in every frame, nothing cropped, and grain intact (encode a test MP4 on a computer to check 18 fps playback) (denoise is off by default).
