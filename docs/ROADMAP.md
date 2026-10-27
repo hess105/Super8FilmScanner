@@ -43,7 +43,6 @@ These durations are estimates for one person working about 8-10 hours a week, an
 Deferred review findings, none blocking. Each is a checkbox: file, one-line fix.
 
 ### Firmware (check on the real Pico)
-- [ ] `firmware/main.py`: `readline()` returns `""` on EOF and may spin printing `ERR empty`; add `if not line: continue`.
 - [ ] `firmware/main.py`: no wait after EN goes low before the first step; add `time.sleep_ms(2)`.
 - [ ] `firmware/main.py`: per-step interpreter overhead limits the top step rate; measure, and move to PIO if needed.
 - [ ] `firmware/main.py`: exceptions other than `ProtocolError` end the loop; catch and reply `ERR`.
@@ -87,7 +86,6 @@ Deferred review findings, none blocking. Each is a checkbox: file, one-line fix.
 - [ ] `tests/test_server.py`: the gate test relies on a thread name; the 10 s gate timeout slows a regression failure; use an event and a short timeout.
 
 ### Entrypoint and repo
-- [ ] `app/__main__.py`: no shutdown cleanup after uvicorn exits; turn the light off in a `finally`.
 - [ ] `.gitignore`: stray `*.FCStd1` rule; remove. `*.png`/`*.jpg` rules would hide images added under `app/static`; add `!app/static/**` if needed.
 - [ ] `requirements.txt`: unpinned; pin once the Pi install works.
 
@@ -95,7 +93,9 @@ Deferred review findings, none blocking. Each is a checkbox: file, one-line fix.
 - [ ] Pico flashing and serial check (Task 4).
 - [ ] Pi camera capture (Task 9).
 - [ ] End-to-end check on the machine (Task 14).
-- [ ] Encode a first MP4 on a desktop with `tools/encode_reel.py` from a test scan.
+- [ ] Encode a first MP4 on a desktop with `tools/encode_reel.py` from a real test scan (only synthetic PNGs have been encoded so far).
+- [ ] Test each GPU encoder on real hardware: `nvenc`, `qsv`, `amf` and `vaapi` have never been run (pytest only checks the command text). `videotoolbox` was run once on a Mac with synthetic frames, not on a scan.
+- [ ] Verify the default quality value per encoder on a real scan (`cpu` 15 is the legacy value; `nvenc` 19, `qsv` 20, `amf` 18, `vaapi` 20 are unverified guesses, `videotoolbox` 65 is only known to be accepted).
 - [ ] The web page in a browser.
 
 Process note: commit trailers name the model that wrote each commit (Haiku 5.5 or Sonnet 5.5). The plan text for Tasks 10, 12 and 13 is out of date, because the code changed in fix rounds.

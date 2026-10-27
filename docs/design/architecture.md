@@ -31,7 +31,7 @@ The Pi never drives motors or the LED directly. It sends one text command per li
 
 | Module | Responsibility | Depends on |
 |---|---|---|
-| `app/__main__.py` | Entrypoint: load settings, create the `CommandLog`, open controller (traffic goes to the log) and camera, lock white balance, start uvicorn on `0.0.0.0:8000` (`--config`, `--port`) | `config`, `controller`, `camera`, `runner`, `server` |
+| `app/__main__.py` | Entrypoint: load settings, create the `CommandLog`, open controller (traffic goes to the log) and camera, lock white balance, start uvicorn on `0.0.0.0:8000` (`--config`, `--port`); on exit it stops the scan, turns the light off and closes the controller and camera | `config`, `controller`, `camera`, `runner`, `server` |
 | `app/config.py` | `Settings` dataclass with defaults; `load` ignores unknown keys, `save` writes JSON | stdlib |
 | `app/controller.py` | Serial wrapper: `advance`, `wind`, `set_light`, `status`, `command` (operator line from the terminal); blocks until the reply; raises `ControllerError`; reports each command, reply and error to `on_traffic` | `pyserial` (imported in `open`) |
 | `app/console.py` | `CommandLog`: thread-safe ring of the last 500 entries (`cmd`, `reply`, `event`, `error`) with ids that never repeat | stdlib |
@@ -101,15 +101,24 @@ scans/<reel name>/
 ```
 
 The reel name is 1-64 letters, digits, `-` or `_`. Starting a scan with an existing name continues from the next unused frame number. `scan.json` is written to a temporary file and renamed, so it is never half written.
+
 ## 6a. Encoding on a computer
 
-The device only collects frames; they are the master. Encode them on a desktop with `tools/encode_reel.py` (needs `ffmpeg` installed there), or by hand:
+The device only collects frames; they are the master. `tools/encode_reel.py REEL_DIR` turns them into `reel.mp4` on a desktop with `ffmpeg` installed (standard library only; the app never imports it).
+
+- Encoders: `cpu` (libx264/libx265), `nvenc`, `videotoolbox`, `qsv`, `amf`, `vaapi`, each for H.264 or HEVC. `--encoder auto` reads `ffmpeg -encoders`, tries the hardware ones in that order, and falls back to the next if one exits non-zero in its first seconds or reports an init error. The CPU encoder is always last. A named encoder never falls back.
+- Quality is one number per encoder (`cpu` CRF 15 with `-preset slower`; the others map to their constant-quality flag, see the README). Frames are scaled to even dimensions (`scale=trunc(iw/2)*2:trunc(ih/2)*2`), or `scale=-2:H` with `--height`.
+- If frame numbers are missing between the first and last, the tool warns and feeds ffmpeg a temporary concat list of the frames that exist (each shown for 1/fps), so timing stays even.
+- Progress comes from `ffmpeg -progress pipe:1`, printed at most once a second. `--dry-run` prints the command; `--list-encoders` shows what the ffmpeg offers.
+- Testing: pytest covers command building for every encoder and codec, encoder ordering, `ffmpeg -encoders` parsing, gap detection, the concat list, progress parsing, fallback and the CLI, all with injected runners. Only the CPU path and VideoToolbox (once, synthetic frames, on a Mac) have been run. nvenc, qsv, amf and vaapi have never been run, and their default quality values are unverified.
+
+By hand, for the CPU path:
 
 ```
-ffmpeg -framerate 18 -start_number 0 -i frames/frame_%08d.png -c:v libx264 -preset slower -crf 15 -pix_fmt yuv420p reel.mp4
+ffmpeg -framerate 18 -start_number 0 -i frames/frame_%08d.png -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -c:v libx264 -preset slower -crf 15 -pix_fmt yuv420p reel.mp4
 ```
 
-Use 18 fps for Super 8 sound-speed playback (24 fps silent speed is not used here). The PNGs are 4056x3040. An odd frame size needs `-vf scale=trunc(iw/2)*2:trunc(ih/2)*2`, and a smaller copy for sharing can use `-vf scale=-2:1080`. DaVinci Resolve can also import the PNG sequence.
+Use 18 fps for Super 8 sound-speed playback (24 fps silent speed is not used here). The PNGs are 4056x3040. A smaller copy for sharing can use `-vf scale=-2:1080`. DaVinci Resolve can also import the PNG sequence.
 
 ## 7. Calibration-critical settings (defaults from `app/config.py`)
 

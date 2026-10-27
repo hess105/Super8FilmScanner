@@ -17,13 +17,30 @@ On Raspberry Pi OS (Bookworm):
     .venv/bin/python -m app --config scanner.json
 
 Open `http://<pi-hostname>.local:8000`. There is no login, so only run it on a network you trust.
-Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `scan.json`. The device does not make a video: encode the frames on a desktop with `tools/encode_reel.py` (needs `ffmpeg` on that computer) or by hand, see "Encoding on a computer" in `docs/design/architecture.md`:
-
-    ffmpeg -framerate 18 -start_number 0 -i frames/frame_%08d.png -c:v libx264 -preset slower -crf 15 -pix_fmt yuv420p reel.mp4
+Each reel is saved to `scans/<name>/frames/` as aligned, uncropped PNGs, with `scan.json`. The device does not make a video: see "Encoding on a desktop" below.
 
 A 50 ft reel is about 3,600 frames of about 20 MB PNGs, so roughly 70-80 GB: check free disk space before a scan.
 The page shows the live gate with the target row, scan controls, camera and light settings, flagged frames, and a terminal at the bottom. The terminal lists every command sent to the controller (`→`), its reply (`←`), scan events such as nudges and winds (`●`) and errors (`✗`), and lets you type `ADVANCE`, `WIND`, `LIGHT` or `STATUS` yourself while no scan is running (type `help` for the arguments). It keeps the last 500 entries in memory; Clear only clears your view.
 Hardware numbers (steps per frame, motor rates, sprocket threshold) live in `scanner.json`; see `app/config.py` for every setting and its default.
+
+## Encoding on a desktop
+
+The Pi only collects frames. Copy `scans/<name>/` to a desktop and encode it there; a stronger CPU or a GPU is much faster than the Pi. Install `ffmpeg` (`brew install ffmpeg`, `sudo apt install ffmpeg`, or `winget install ffmpeg`), then:
+
+    python tools/encode_reel.py scans/<name>
+
+This writes `scans/<name>/reel.mp4` (H.264, 18 fps). It needs only Python 3 and ffmpeg. With `--encoder auto` (the default) it uses the first hardware encoder your ffmpeg offers (nvenc, videotoolbox, qsv, amf, vaapi) and falls back to the CPU encoder if that one fails to start; it prints which one made the file. Useful options:
+
+- `--encoder cpu|nvenc|videotoolbox|qsv|amf|vaapi` to force one (no fallback), `--codec hevc` for H.265, `--height 1080` for a smaller copy, `--output PATH`, `--fps N`.
+- `--quality N`: one number whose meaning depends on the encoder. `cpu`: CRF, lower is better, default 15. `nvenc`, `qsv`, `amf`, `vaapi`: quantizer, lower is better (defaults 19, 20, 18, 20). `videotoolbox`: 0-100, higher is better (default 65).
+- `--list-encoders` shows what your ffmpeg offers and which one auto would pick. `--dry-run` prints the exact ffmpeg command and exits without encoding.
+- Missing frames (a lost write) are listed in a warning; the video skips them.
+
+What is tested: pytest checks the command building for every encoder and the CPU path's command, with no ffmpeg needed. Only the CPU encoder and VideoToolbox (once, on a Mac, with synthetic frames) have been run. The `nvenc`, `qsv`, `amf` and `vaapi` encoders have not been run on real hardware, and their default quality values are unverified, so check the first result by eye. If one fails, use `--encoder cpu`.
+
+Without the tool, this ffmpeg command does the same for the CPU path, from inside the reel folder:
+
+    ffmpeg -framerate 18 -start_number 0 -i frames/frame_%08d.png -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -c:v libx264 -preset slower -crf 15 -pix_fmt yuv420p reel.mp4
 
 Design notes: [architecture](docs/design/architecture.md), [hardware](docs/design/hardware.md), [wiring](docs/design/wiring.md), [datasheets](docs/datasheets/README.md). Project plan and next steps: [roadmap](docs/ROADMAP.md).
 
